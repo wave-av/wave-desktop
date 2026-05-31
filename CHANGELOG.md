@@ -1,6 +1,8 @@
 # Changelog
 
-All notable changes documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+All notable changes to this project are documented here. The format is based on
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
@@ -11,6 +13,7 @@ All notable changes documented here. Format: [Keep a Changelog](https://keepacha
 - Network-interface enumeration via `node:os` (renderer surface)
 - Gateway-JWT sign-in stub (real OAuth flow tracked for Wave 2)
 - Foundation chassis: CODEOWNERS, SECRETS.md, foundation-gate workflow,
-  .foundation-version pin
+  `.foundation-version` pin
 - macOS entitlements (camera/mic/network)
 - CSP: `default-src 'self'`, gateway-only `connect-src`
+- AGENTS.md governance contract (inherits the org default + repo-governance standard)

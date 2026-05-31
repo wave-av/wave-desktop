@@ -3,6 +3,9 @@
 **WAVE Operator Console** — desktop app for the first/last-mile of every WAVE
 workflow. Layer 0 of the [WAVE Protocol Plane][plane].
 
+> **Status: early / scaffolding.** Interfaces and scope will change. Watch the
+> releases + [CHANGELOG](./CHANGELOG.md).
+
 > One app on every broadcast machine. Every signal on your LAN routes through
 > WAVE automatically — encoder, receiver, multiview, conferencing bridge.
 
@@ -14,6 +17,9 @@ workflow. Layer 0 of the [WAVE Protocol Plane][plane].
 | **Receivers** | Subscribe to any WAVE feed → render to a virtual NDI source, virtual webcam (visible to Zoom/Teams/Meet), local file, or on-screen preview |
 | **Multiview** | 4×4 / 9×9 / 16×16 grid with NDI + Dante audio meters. Click a tile to pin as program. Optional push to wave-realtime-edge as WebRTC |
 | **Settings** | Gateway sign-in, default codec, preferred network interface, x402 budget cap |
+
+Auth, entitlement, and metering are handled by the WAVE platform
+(`api.wave.online`); the desktop app is a thin client.
 
 ## Why this exists
 
@@ -46,6 +52,11 @@ npm run dev
 
 `npm run dist:mac` produces a `.dmg` for arm64 + x64 (needs Apple developer
 secrets in CI; see `SECRETS.md`).
+
+## Develop
+
+See [AGENTS.md](./AGENTS.md) for the contribution contract + the gates every
+change must pass.
 
 ## Architecture
 
@@ -87,6 +98,11 @@ machine under their own credentials. See `CONTRIBUTING.md` and `.gitignore`.
 | W7 | Zoom / Teams / Meet bridge (#166) | pending |
 
 Full plan: `~/claude-hub/.claude/plans/wave-on-prem-layer/plan.md`.
+
+## Links
+
+- WAVE — <https://wave.online>
+- Security policy — see the org [SECURITY policy](https://github.com/wave-av/.github/blob/main/SECURITY.md) (`security@wave.online`)
 
 ## License
 
