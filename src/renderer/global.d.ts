@@ -14,6 +14,7 @@ import type {
   EncoderStatus,
   NetworkInterface,
   Settings,
+  SignInEvent,
   SignInRequest,
 } from '@shared/ipc';
 
@@ -21,7 +22,10 @@ interface WaveBridge {
   auth: {
     state(): Promise<AuthState>;
     signIn(req?: SignInRequest): Promise<AuthState>;
+    signInCancel(): Promise<void>;
     signOut(): Promise<AuthState>;
+    /** Subscribe to sign-in lifecycle events; returns unsubscribe fn. */
+    onSignInEvent(handler: (ev: SignInEvent) => void): () => void;
   };
   settings: {
     get(): Promise<Settings>;

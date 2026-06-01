@@ -37,6 +37,33 @@ export const SignInRequestSchema = z.object({
 });
 export type SignInRequest = z.infer<typeof SignInRequestSchema>;
 
+/**
+ * Streaming sign-in event — renderer subscribes to display the device code +
+ * verification URL while the operator approves in their browser. The main
+ * process emits one `pending` (with the challenge) then either `success` or
+ * `error`. The userCode + verificationUri are PUBLIC display strings; no
+ * tokens / device_codes ever cross the IPC bridge.
+ */
+export const SignInEventSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('pending'),
+    userCode: z.string().min(1),
+    verificationUri: z.string().url(),
+    /** prefilled link; renderer should prefer this when present */
+    verificationUriComplete: z.string().url().optional(),
+    expiresInSec: z.number().int().positive(),
+  }),
+  z.object({ kind: z.literal('success'), state: AuthStateSchema }),
+  z.object({
+    kind: z.literal('error'),
+    /** RFC 8628 code (`access_denied`, `expired_token`, etc.) or `aborted` / `http_error` */
+    code: z.string(),
+    /** human-readable; never includes tokens */
+    message: z.string(),
+  }),
+]);
+export type SignInEvent = z.infer<typeof SignInEventSchema>;
+
 // ── settings ────────────────────────────────────────────────────────────────
 
 export const NetworkInterfaceSchema = z.object({
@@ -87,7 +114,10 @@ export type EncoderStatus = z.infer<typeof EncoderStatusSchema>;
 export const IPC = {
   authState: 'wave:auth:state',
   authSignIn: 'wave:auth:sign-in',
+  authSignInCancel: 'wave:auth:sign-in-cancel',
   authSignOut: 'wave:auth:sign-out',
+  /** main → renderer stream of sign-in lifecycle events */
+  authSignInEvent: 'wave:auth:sign-in-event',
   settingsGet: 'wave:settings:get',
   settingsSet: 'wave:settings:set',
   settingsListInterfaces: 'wave:settings:list-interfaces',
