@@ -10,7 +10,7 @@
 import { app, BrowserWindow, shell } from 'electron';
 import { electronApp, optimizer } from '@electron-toolkit/utils';
 import { join } from 'node:path';
-import { registerIpcHandlers } from './ipc';
+import { hydrateAuth, registerIpcHandlers } from './ipc';
 
 const isDev = !app.isPackaged;
 
@@ -50,10 +50,17 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
   electronApp.setAppUserModelId('online.wave.desktop');
   app.on('browser-window-created', (_e, w) => optimizer.watchWindowShortcuts(w));
   registerIpcHandlers();
+  // Restore the previous session BEFORE opening the window so first-paint
+  // shows the right account state instead of a sign-in CTA that flickers off.
+  try {
+    await hydrateAuth();
+  } catch {
+    /* corrupt keychain entry → treated as signed-out by hydrateAuth */
+  }
   createWindow();
 
   app.on('activate', () => {
