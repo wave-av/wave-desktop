@@ -7,11 +7,7 @@
   "foundationPin": "v1",
   "maintainers": [{ "team": "operator" }],
   "exposes": {
-    "renderSurfaces": [{ "kind": "electron-app", "id": "online.wave.desktop" }],
-    "apis": [
-      { "protocol": "http", "endpoint": "ipc://wave:auth:state", "auth": "none" },
-      { "protocol": "http", "endpoint": "ipc://wave:encoder:start", "auth": "bearer-jwt" }
-    ]
+    "renderSurfaces": [{ "kind": "electron-app", "id": "online.wave.desktop" }]
   },
   "consumes": {
     "waveProducts": [
