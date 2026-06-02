@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1",
+  "repo": "wave-av/wave-desktop",
+  "version": "0.2.0",
+  "lifecycle": "alpha",
+  "planeLayer": 0,
+  "foundationPin": "v1",
+  "maintainers": [{ "team": "operator" }],
+  "exposes": {
+    "renderSurfaces": [{ "kind": "electron-app", "id": "online.wave.desktop" }]
+  },
+  "consumes": {
+    "waveProducts": [
+      { "repo": "wave-av/wave-gateway", "endpoint": "/oauth/device/code" },
+      { "repo": "wave-av/wave-gateway", "endpoint": "/oauth/token" }
+    ],
+    "thirdParty": [
+      { "service": "electron-safe-storage", "licenseGated": false }
+    ],
+    "foundationFrameworks": ["frameworks/protocol-plane", "frameworks/platform-registry", "frameworks/copywriting"]
+  },
+  "events": {
+    "publishes": [
+      { "topic": "auth.signed-in", "transport": "sentry" },
+      { "topic": "auth.sign-in.failed", "transport": "sentry" }
+    ]
+  },
+  "tags": ["operator", "public", "electron", "on-prem", "build-on-wave", "oauth-device-code"]
+}
