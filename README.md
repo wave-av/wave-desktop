@@ -1,34 +1,111 @@
-# WAVE Operator Console (wave-desktop)
+# wave-desktop
 
-The WAVE Operator Console — a cross-platform **Electron** desktop app for first/last-mile WAVE
-workflows: encode, receive, multiview, and the conferencing bridge.
+**WAVE Operator Console** — desktop app for the first/last-mile of every WAVE
+workflow. Layer 0 of the [WAVE Protocol Plane][plane].
 
-> **Status: early / scaffolding.** This repository is being set up. The app is not yet generally
-> available; interfaces and scope will change. Watch the releases and [CHANGELOG](./CHANGELOG.md).
+> **Status: early / scaffolding.** Interfaces and scope will change. Watch the
+> releases + [CHANGELOG](./CHANGELOG.md).
 
-## What it's for
+> One app on every broadcast machine. Every signal on your LAN routes through
+> WAVE automatically — encoder, receiver, multiview, conferencing bridge.
 
-The Operator Console is the human-facing surface for running WAVE at the edge of a production —
-the machine an operator sits in front of to:
+## What it does
 
-- **Encode** local sources and publish them to WAVE.
-- **Receive** WAVE streams for monitoring and local output.
-- **Multiview** several sources at once.
-- Bridge into **conferencing** for remote contribution.
+| Tab | Purpose |
+|---|---|
+| **Encoders** | Pick a source (camera, screen, file, NDI receive, Dante receive, OBS scene) → pick a destination stream key → pick a codec (H.264 / HEVC / AV1 / AV2) → one-click live |
+| **Receivers** | Subscribe to any WAVE feed → render to a virtual NDI source, virtual webcam (visible to Zoom/Teams/Meet), local file, or on-screen preview |
+| **Multiview** | 4×4 / 9×9 / 16×16 grid with NDI + Dante audio meters. Click a tile to pin as program. Optional push to wave-realtime-edge as WebRTC |
+| **Settings** | Gateway sign-in, default codec, preferred network interface, x402 budget cap |
 
-Auth, entitlement, and metering are handled by the WAVE platform (api.wave.online); the desktop app
-is a client.
+Auth, entitlement, and metering are handled by the WAVE platform
+(`api.wave.online`); the desktop app is a thin client.
+
+## Why this exists
+
+Today, broadcast engineers manually configure SRT / NDI / RTMP and stitch
+their LAN packets to `api.wave.online`. After this app ships, they install
+one thing and everything on their LAN finds its way to WAVE — with codec
+choice, multiview, and conferencing-app virtual cameras built in.
+
+It's also the **first** "Build on WAVE" app — built entirely on the public
+WAVE SDKs, demonstrating that every customer can build their own version.
+
+## Stack
+
+- **Runtime**: Electron 34 + sandbox + contextIsolation + nodeIntegration:false
+- **Build**: electron-vite + Vite 6 + electron-builder
+- **UI**: React 19 + TypeScript 5.7 + Tailwind 4
+- **State**: Zustand (renderer) · process-local state (main)
+- **IPC**: typed `window.wave` surface, every channel `.parse()`'d via Zod
+- **Storage**: OS secure-storage (`safeStorage`) for tokens / license keys
+- **Tests**: Vitest
+
+## Quick start
+
+```sh
+git clone https://github.com/wave-av/wave-desktop.git
+cd wave-desktop
+npm install
+npm run dev
+```
+
+`npm run dist:mac` produces a `.dmg` for arm64 + x64 (needs Apple developer
+secrets in CI; see `SECRETS.md`).
 
 ## Develop
 
-Prerequisites and exact commands will be documented here as the app lands. Until then, see
-[AGENTS.md](./AGENTS.md) for the contribution contract and the gates every change must pass.
+See [AGENTS.md](./AGENTS.md) for the contribution contract + the gates every
+change must pass.
+
+## Architecture
+
+```
+┌── renderer (untrusted, CSP-locked) ─────┐
+│  React tabs → window.wave.* invokes     │
+└──────────────────┬──────────────────────┘
+                   │ IPC (Zod-validated)
+┌──────────────────▼──────────────────────┐
+│  main process                           │
+│  · safeStorage (Keychain / DPAPI / etc) │
+│  · OAuth device-code flow → gateway JWT │
+│  · child encoders (libsrt / NDI / DAL)  │
+│  · network-interface enumeration        │
+└──────────────────┬──────────────────────┘
+                   │ TLS + JWT (Bearer)
+                   ▼
+           api.wave.online  (Layer 1 — Edge)
+```
+
+See [`threat-model.md`](./threat-model.md) for the full trust boundaries.
+
+## License boundary
+
+This repo ships **no vendor-licensed binaries**. `libdal`, `libndi`, NDI
+Advanced, `dante_activator` — all fetched at install time on each operator's
+machine under their own credentials. See `CONTRIBUTING.md` and `.gitignore`.
+
+## Roadmap
+
+| Wave | Surface | Status |
+|---|---|---|
+| W1 | This scaffold | shipped |
+| W2 | OAuth + safeStorage + first encoder (SRT) | next |
+| W3 | Receivers tab (virtual NDI + virtual webcam) | pending |
+| W4 | Multiview grid + WebRTC push | pending |
+| W5 | OBS plugin (#163, separate repo) | pending |
+| W6 | vMix integration (#164) | pending |
+| W7 | Zoom / Teams / Meet bridge (#166) | pending |
+
+Full plan: `~/claude-hub/.claude/plans/wave-on-prem-layer/plan.md`.
 
 ## Links
 
 - WAVE — <https://wave.online>
-- Security policy — see the org [SECURITY policy](https://github.com/wave-av/.github/blob/main/SECURITY.md)
+- Security policy — see the org [SECURITY policy](https://github.com/wave-av/.github/blob/main/SECURITY.md) (`security@wave.online`)
 
 ## License
 
-See [LICENSE](./LICENSE).
+[MIT](./LICENSE) · Copyright © 2026 WAVE Online LLC.
+
+[plane]: https://github.com/wave-av/wave-foundation/blob/master/frameworks/protocol-plane/README.md
