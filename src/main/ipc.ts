@@ -272,3 +272,23 @@ export function registerIpcHandlers(): void {
 
 // Re-export for tests that exercise the JWT helpers without booting Electron.
 export { expiresInSec };
+
+// ── control-plane state accessor ────────────────────────────────────────────
+// The control-plane HTTP server needs a cheap snapshot of the current auth
+// state on every request. Rather than threading the `current` cache through
+// initControlPlane(), we expose a function the caller can pass directly.
+// This keeps the auth cache module-private and avoids re-implementing the
+// "is the token still valid?" check in two places.
+
+/**
+ * Snapshot of auth state for the control-plane HTTP /v1/auth + /v1/status
+ * endpoints. Cheap — no I/O. Calls publicAuthState() and combines with the
+ * static main-process metadata (version, bootAt) that the caller supplies.
+ */
+export function authSnapshot(): {
+  signedIn: boolean;
+  subject: string | null;
+  expiresInSec: number | null;
+} {
+  return publicAuthState();
+}

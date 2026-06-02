@@ -118,7 +118,121 @@ export function SettingsView(): React.JSX.Element {
           ${settings?.x402BudgetCapUsd.toFixed(2) ?? '—'}
         </code>
       </Field>
+
+      <Field label="Integrations (Companion / vMix / external multiview)">
+        <IntegrationsControl />
+      </Field>
     </section>
+  );
+}
+
+/**
+ * Surfaces the localhost control-plane key for the operator to paste into
+ * Bitfocus Companion / a vMix script / a multiviewer config. The key is
+ * fetched lazily (only when the operator clicks "Reveal") and held only in
+ * component state — closing the panel drops the in-memory copy.
+ */
+function IntegrationsControl(): React.JSX.Element {
+  const [info, setInfo] = useState<{ port: number; hasKey: boolean; startedAt: string } | null>(
+    null,
+  );
+  const [key, setKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void window.wave.controlPlane.info().then(setInfo).catch(() => setInfo(null));
+  }, []);
+
+  const reveal = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      const r = await window.wave.controlPlane.revealKey();
+      setKey(r.apiKey);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async (): Promise<void> => {
+    if (!key) return;
+    await navigator.clipboard.writeText(key);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const regenerate = async (): Promise<void> => {
+    if (!confirm('Rotate the control-plane key? Any active Companion / vMix integration will need the new key.')) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await window.wave.controlPlane.regenerateKey();
+      setKey(r.apiKey);
+      const next = await window.wave.controlPlane.info();
+      setInfo(next);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!info) {
+    return <div className="text-xs text-zinc-500">control plane unavailable</div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="text-xs text-zinc-400">
+        Endpoint: <code className="text-zinc-300">http://127.0.0.1:{info.port}/v1/*</code>
+      </div>
+      {key === null ? (
+        <button
+          type="button"
+          onClick={() => void reveal()}
+          disabled={busy}
+          className="min-h-11 rounded border border-zinc-700 px-4 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50"
+        >
+          {busy ? 'Loading…' : 'Reveal API key'}
+        </button>
+      ) : (
+        <div className="space-y-2">
+          <code
+            className="block break-all rounded bg-zinc-900 px-2 py-2 text-xs text-zinc-200"
+            aria-label="control-plane API key"
+          >
+            {key}
+          </code>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void copy()}
+              className="min-h-11 rounded bg-[var(--wave-accent)] px-4 text-sm font-medium text-zinc-950"
+            >
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setKey(null)}
+              className="min-h-11 rounded border border-zinc-700 px-4 text-sm text-zinc-200 hover:bg-zinc-800"
+            >
+              Hide
+            </button>
+            <button
+              type="button"
+              onClick={() => void regenerate()}
+              disabled={busy}
+              className="min-h-11 rounded border border-zinc-700 px-4 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50"
+            >
+              {busy ? 'Rotating…' : 'Regenerate'}
+            </button>
+          </div>
+          <div className="text-xs text-zinc-500">
+            Paste this into Companion's WAVE module config. The key never leaves your machine and
+            is only displayed when you click Reveal.
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
