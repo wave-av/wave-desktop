@@ -30,8 +30,17 @@ describe('applySecurityHeaders', () => {
     expect(res.__headers['content-security-policy']).toBe("default-src 'none'");
     expect(res.__headers['cross-origin-resource-policy']).toBe('same-origin');
     expect(res.__headers['permissions-policy']).toBe('interest-cohort=()');
-    expect(res.__headers['access-control-allow-origin']).toBe('null');
     expect(res.__headers['vary']).toBe('Origin');
+  });
+
+  it('does NOT set Access-Control-Allow-Origin (omission = deny)', () => {
+    // The previous version set ACAO: 'null', which was a real CORS allow
+    // for `null`-origin callers (sandboxed iframes, file://). Browsers
+    // fall back to same-origin policy when the header is absent — that's
+    // the deny we actually want.
+    const res = mockRes() as ServerResponse & { __headers: Record<string, string> };
+    applySecurityHeaders(res);
+    expect(res.__headers['access-control-allow-origin']).toBeUndefined();
   });
 
   it('CSP is the strictest possible default-src none', () => {
