@@ -22,6 +22,16 @@ export interface EncoderRecord {
   lastProgress: EncoderProgress | null;
   /** Underlying ffmpeg child process — null after stop(). */
   child: ChildProcess | null;
+  /**
+   * Set true when stop() is called. The exit handler reads this to
+   * distinguish "user asked us to stop" (→ idle) from "ffmpeg crashed
+   * with no warning" (→ errored). Inferring intent from `signal ===
+   * 'SIGTERM' || code === 0` was unreliable: a clean ffmpeg exit code 0
+   * during a live stream IS an error (something dropped the input);
+   * conversely a stop() on a process that hadn't sent its first frame
+   * can produce code 1 + null signal.
+   */
+  stoppingByUser: boolean;
 }
 
 export interface SpawnOptions {
@@ -65,6 +75,7 @@ export class EncoderController {
       },
       lastProgress: null,
       child,
+      stoppingByUser: false,
     };
     this.records.set(id, record);
 
@@ -100,9 +111,16 @@ export class EncoderController {
 
     child.on('exit', (code, signal) => {
       record.child = null;
-      // Non-zero exit on an active stream is an error; on stop() we expect
-      // a SIGTERM and don't flag that as an error state.
-      if (signal === 'SIGTERM' || code === 0) {
+      // Intent over inference: a user-initiated stop() flips
+      // stoppingByUser to true BEFORE sending SIGTERM. Any other exit
+      // path — clean (code 0) during a live stream, SIGKILL from the
+      // OOM killer, ffmpeg's own non-zero codes — is an error from the
+      // operator's POV. Pre-fix, we keyed off `signal === 'SIGTERM' ||
+      // code === 0`, which mis-classified both "ffmpeg ended its input
+      // cleanly mid-stream" (looked idle, actually data loss) and
+      // "stop() arrived before first frame" (looked errored, actually
+      // intentional).
+      if (record.stoppingByUser) {
         record.status = { ...record.status, state: 'idle' };
       } else {
         record.status = {
@@ -120,6 +138,7 @@ export class EncoderController {
   stop(id: string): boolean {
     const rec = this.records.get(id);
     if (!rec || !rec.child) return false;
+    rec.stoppingByUser = true;
     rec.child.kill('SIGTERM');
     // Status flips to 'idle' once the exit handler fires.
     return true;
