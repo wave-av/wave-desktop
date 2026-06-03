@@ -38,4 +38,16 @@ describe('deriveSrtTarget', () => {
     const t = deriveSrtTarget('https://api.wave.online', 'k_with-dots.and_underscores-42');
     expect(t.streamKey).toBe('k_with-dots.and_underscores-42');
   });
+
+  it('strips any HTTP port from gatewayBase (URL.hostname, not URL.host)', () => {
+    // Cubic flagged this on PR #11: URL.host returns 'api.wave.online:8443'
+    // when a non-default port is set, which then becomes
+    // 'srt://ingest.wave.online:8443:6000' — broken. URL.hostname returns
+    // just the host portion.
+    const t = deriveSrtTarget('https://api.wave.online:8443', 'op_jake_2026');
+    expect(t.host).toBe('ingest.wave.online');
+    expect(t.port).toBe(6000);
+    // Defense-in-depth — no colon should ever appear in the host portion.
+    expect(t.host).not.toContain(':');
+  });
 });

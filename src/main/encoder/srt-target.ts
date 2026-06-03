@@ -20,7 +20,12 @@ export const DEFAULT_SRT_PORT = 6000;
 export function deriveSrtTarget(gatewayBase: string, streamKey: string): SrtTarget {
   let host = FALLBACK_HOST;
   try {
-    host = new URL(gatewayBase).host.replace(/^api\./, 'ingest.');
+    // URL.hostname strips any port — URL.host would include it, producing
+    // a malformed `srt://api.wave.online:8443:6000` when a non-default
+    // port was set on gatewayBase (dev / staging behind a custom ingress).
+    // We always pair the SRT port from DEFAULT_SRT_PORT, never from the
+    // HTTP base URL.
+    host = new URL(gatewayBase).hostname.replace(/^api\./, 'ingest.');
   } catch {
     /* fallback to default — malformed gatewayBase */
   }
