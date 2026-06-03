@@ -8,10 +8,13 @@
  * one named function is easier to audit than a middleware chain.
  *
  * Notable choices:
- *   - `Access-Control-Allow-Origin: null` (explicit deny — Companion is a
- *     Node process, not a browser, so it never sends Origin and never
- *     triggers CORS). Browsers that wander to http://127.0.0.1:31415 get
- *     a flat refusal rather than implicit allow-anything.
+ *   - NO `Access-Control-Allow-Origin` header at all. Companion is a Node
+ *     process, not a browser; it never sends Origin and never triggers
+ *     CORS. Setting `ACAO: null` was wrong — `null` is a real allowable
+ *     origin value that sandboxed iframes and `file://` documents send,
+ *     so we'd effectively be granting them access. Omitting the header
+ *     entirely is the correct deny: browsers fall back to same-origin
+ *     policy and refuse the read.
  *   - `X-Frame-Options: DENY` — defense against clickjacking from any
  *     local HTML page that might load us in an iframe.
  *   - `Cache-Control: no-store` — control responses are real-time state,
@@ -31,8 +34,8 @@ export function applySecurityHeaders(res: ServerResponse): void {
   res.setHeader('Content-Security-Policy', "default-src 'none'");
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   res.setHeader('Permissions-Policy', 'interest-cohort=()');
-  // Explicit cross-origin deny — there's no legitimate browser caller.
-  res.setHeader('Access-Control-Allow-Origin', 'null');
+  // Vary on Origin so any caching layer keys per-origin (defense-in-depth;
+  // we set Cache-Control: no-store already, but Vary is the right metadata).
   res.setHeader('Vary', 'Origin');
 }
 

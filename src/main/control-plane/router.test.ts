@@ -162,7 +162,8 @@ describe('control-plane router (live HTTP)', () => {
     });
     expect(r.headers.get('x-content-type-options')).toBe('nosniff');
     expect(r.headers.get('content-security-policy')).toBe("default-src 'none'");
-    expect(r.headers.get('access-control-allow-origin')).toBe('null');
+    // Omits ACAO entirely — browser falls back to same-origin policy.
+    expect(r.headers.get('access-control-allow-origin')).toBeNull();
   });
 
   it('binds on 127.0.0.1 only — refuses 0.0.0.0 traffic in spirit', async () => {
