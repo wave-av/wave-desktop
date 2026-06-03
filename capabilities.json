@@ -1,13 +1,28 @@
 {
   "schemaVersion": "1",
   "repo": "wave-av/wave-desktop",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "lifecycle": "alpha",
   "planeLayer": 0,
   "foundationPin": "v1",
   "maintainers": [{ "team": "operator" }],
   "exposes": {
-    "renderSurfaces": [{ "kind": "electron-app", "id": "online.wave.desktop" }]
+    "renderSurfaces": [{ "kind": "electron-app", "id": "online.wave.desktop" }],
+    "apis": [
+      {
+        "name": "control-plane",
+        "protocol": "http",
+        "address": "127.0.0.1:31415",
+        "auth": "bearer",
+        "endpoints": [
+          { "method": "GET", "path": "/v1/status" },
+          { "method": "GET", "path": "/v1/auth" },
+          { "method": "POST", "path": "/v1/monitor/connect" },
+          { "method": "POST", "path": "/v1/monitor/disconnect" }
+        ],
+        "binds": "loopback-only"
+      }
+    ]
   },
   "consumes": {
     "waveProducts": [
@@ -17,7 +32,11 @@
     "thirdParty": [
       { "service": "electron-safe-storage", "licenseGated": false }
     ],
-    "foundationFrameworks": ["frameworks/protocol-plane", "frameworks/platform-registry", "frameworks/copywriting"]
+    "foundationFrameworks": [
+      "frameworks/protocol-plane",
+      "frameworks/platform-registry",
+      "frameworks/copywriting"
+    ]
   },
   "events": {
     "publishes": [
@@ -25,5 +44,13 @@
       { "topic": "auth.sign-in.failed", "transport": "sentry" }
     ]
   },
-  "tags": ["operator", "public", "electron", "on-prem", "build-on-wave", "oauth-device-code"]
+  "tags": [
+    "operator",
+    "public",
+    "electron",
+    "on-prem",
+    "build-on-wave",
+    "oauth-device-code",
+    "loopback-control-plane"
+  ]
 }
