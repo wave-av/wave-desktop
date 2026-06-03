@@ -140,12 +140,28 @@ export class EncoderController {
     if (!rec || !rec.child) return false;
     rec.stoppingByUser = true;
     rec.child.kill('SIGTERM');
-    // Status flips to 'idle' once the exit handler fires.
+    // Status flips to 'idle' once the exit handler fires; the record is
+    // then evicted from the map on the next list()/size() call (we keep
+    // the entry around briefly so a follow-up listStatus right after
+    // stop() can still report the last-known state).
     return true;
   }
 
+  /**
+   * Returns the active encoder set, evicting any records whose child has
+   * already exited. Pre-fix, stopped encoders accumulated in the map
+   * forever — listStatus returned stale 'idle'/'errored' entries and
+   * memory grew unboundedly across long sessions.
+   */
   list(): EncoderStatus[] {
+    this.evictTerminated();
     return Array.from(this.records.values()).map((r) => r.status);
+  }
+
+  private evictTerminated(): void {
+    for (const [id, rec] of this.records) {
+      if (rec.child === null) this.records.delete(id);
+    }
   }
 
   get(id: string): EncoderRecord | undefined {
