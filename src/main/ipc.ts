@@ -37,6 +37,10 @@ import {
 } from './auth/oauth';
 import { clearToken, isAvailable, readToken, writeToken } from './auth/token-store';
 import { decodeJwtPayload, expiresInSec } from './auth/jwt';
+import { EncoderController } from './encoder/lifecycle';
+import { resolve as resolveFfmpeg } from './encoder/binary-resolver';
+import { deriveSrtTarget } from './encoder/srt-target';
+import type { SrtTarget } from './encoder/srt-args';
 
 // ── auth state (main-process only — never serialized to renderer) ───────────
 
@@ -57,7 +61,25 @@ const settings: Settings = {
   preferredInterface: null,
   x402BudgetCapUsd: 10,
 };
-const encoders = new Map<string, EncoderStatus>();
+// The encoder controller owns ffmpeg child processes (one per stream). It's
+// instantiated once at module load — Electron's main process is single-
+// threaded, so the singleton is safe. The previous stub Map lived here too;
+// the controller's `list()` is the drop-in replacement.
+const encoderController = new EncoderController();
+
+/**
+ * Cached SRT target — derived from `settings.gatewayBase` lazily so changes
+ * via `settings:set` get picked up on the next encoder start. See
+ * `encoder/srt-target.ts` for the transformation (api. → ingest. host swap).
+ */
+function srtTargetFor(streamKey: string): SrtTarget {
+  return deriveSrtTarget(settings.gatewayBase, streamKey);
+}
+
+/** For app.before-quit — kill any active encoders so we don't leak ffmpeg. */
+export function stopAllEncoders(): void {
+  encoderController.stopAll();
+}
 
 function publicAuthState(): AuthState {
   if (!current) return { signedIn: false, subject: null, expiresInSec: null };
@@ -242,31 +264,41 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.settingsListInterfaces, (): NetworkInterface[] => listInterfaces());
 
   // ── encoders ─────────────────────────────────────────────────────────────
-  ipcMain.handle(IPC.encoderStart, (_e: IpcMainInvokeEvent, raw: unknown): EncoderStatus => {
-    const req = EncoderStartRequestSchema.parse(raw);
-    const id = crypto.randomUUID();
-    const status: EncoderStatus = {
-      id,
-      state: 'connecting',
-      bitrateKbps: 0,
-      uptimeSec: 0,
-      lastError: null,
-    };
-    // Wave-2: route to the protocol handler matching req.source.kind +
-    // req.codec; start a child process / N-API binding; ferry status frames
-    // back via webContents.send on a streaming channel.
-    void req; // referenced for type-check completeness
-    encoders.set(id, status);
-    return status;
-  });
+  // Real ffmpeg+libsrt encoder (#173). We resolve the binary once per start
+  // rather than caching: the operator may install / update ffmpeg without
+  // restarting the app, and the probe is cheap (~50ms). If no binary is
+  // found, we throw a clear actionable error rather than silently failing.
+  ipcMain.handle(
+    IPC.encoderStart,
+    async (_e: IpcMainInvokeEvent, raw: unknown): Promise<EncoderStatus> => {
+      const req = EncoderStartRequestSchema.parse(raw);
+      const binary = await resolveFfmpeg();
+      if (!binary) {
+        throw new Error(
+          'ffmpeg not found — install via Homebrew (`brew install ffmpeg`), apt, or Chocolatey, or set WAVE_FFMPEG to a binary path',
+        );
+      }
+      if (!binary.hasLibsrt) {
+        throw new Error(
+          `ffmpeg at ${binary.path} was built without --enable-libsrt — install a Homebrew bottle or rebuild with libsrt support`,
+        );
+      }
+      const record = encoderController.start({
+        binary: binary.path,
+        request: req,
+        target: srtTargetFor(req.streamKey),
+      });
+      return record.status;
+    },
+  );
 
   ipcMain.handle(IPC.encoderStop, (_e: IpcMainInvokeEvent, id: unknown): boolean => {
     if (typeof id !== 'string') throw new Error('encoder id must be a string');
-    return encoders.delete(id);
+    return encoderController.stop(id);
   });
 
   ipcMain.handle(IPC.encoderListStatus, (): EncoderStatus[] =>
-    Array.from(encoders.values()),
+    encoderController.list(),
   );
 }
 

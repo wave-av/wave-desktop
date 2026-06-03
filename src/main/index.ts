@@ -10,7 +10,7 @@
 import { app, BrowserWindow, shell } from 'electron';
 import { electronApp, optimizer } from '@electron-toolkit/utils';
 import { join } from 'node:path';
-import { authSnapshot, hydrateAuth, registerIpcHandlers } from './ipc';
+import { authSnapshot, hydrateAuth, registerIpcHandlers, stopAllEncoders } from './ipc';
 import { initControlPlane, type ControlPlaneHandle } from './control-plane/index';
 import { registerControlPlaneIpc } from './control-plane/ipc-handlers';
 import { readFileSync } from 'node:fs';
@@ -127,4 +127,8 @@ app.on('before-quit', () => {
     /* best-effort */
   });
   controlPlane = null;
+  // Kill any active ffmpeg child processes so we don't leak them past app
+  // quit. SIGTERM is synchronous from the child's POV; the controller's
+  // exit handler flips status to 'idle' but we don't observe it here.
+  stopAllEncoders();
 });
