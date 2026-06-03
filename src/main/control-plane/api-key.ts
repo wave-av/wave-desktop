@@ -31,11 +31,21 @@ function path(): string {
   return join(app.getPath('userData'), FILENAME);
 }
 
-function generate(): string {
+/**
+ * Mint a fresh 256-bit hex key without persisting it. Exported because the
+ * control-plane orchestrator needs to defer persistence until AFTER the
+ * server has restarted on the new key — persisting first would create a
+ * window where the on-disk key doesn't match the live listener.
+ */
+export function generate(): string {
   return randomBytes(KEY_BYTES).toString('hex');
 }
 
-async function persist(key: string): Promise<void> {
+/**
+ * Persist a key via safeStorage. Exported (alongside `generate`) so the
+ * orchestrator can do generate → server restart → persist atomically.
+ */
+export async function persist(key: string): Promise<void> {
   if (!safeStorage.isEncryptionAvailable()) {
     throw new Error('safeStorage: OS secure-storage not available');
   }

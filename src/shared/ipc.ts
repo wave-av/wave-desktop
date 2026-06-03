@@ -111,6 +111,29 @@ export type EncoderStatus = z.infer<typeof EncoderStatusSchema>;
 
 // ── channel names (single source of truth — used by main + preload) ─────────
 
+// ── control plane (localhost HTTP API — wired in #189) ──────────────────────
+// The plaintext API key is sensitive. It NEVER ships in `info()` — only the
+// dedicated `revealKey()` channel returns plaintext, and the renderer is
+// expected to immediately hand it to the OS clipboard or paste-buffer rather
+// than persist it. `regenerateKey()` rotates server-side and returns the new
+// plaintext for the same one-shot reveal.
+
+export const ControlPlaneInfoSchema = z.object({
+  /** Bound TCP port (always 127.0.0.1). */
+  port: z.number().int().min(1).max(65535),
+  /** True once `loadOrCreate()` has minted (or read) a key on disk. */
+  hasKey: z.boolean(),
+  /** ISO-8601 instant the server bound the socket. */
+  startedAt: z.string(),
+});
+export type ControlPlaneInfo = z.infer<typeof ControlPlaneInfoSchema>;
+
+export const ControlPlaneRevealResponseSchema = z.object({
+  /** 64-char hex (32 random bytes). Treat as a secret — never persist in renderer. */
+  apiKey: z.string().regex(/^[0-9a-f]{64}$/),
+});
+export type ControlPlaneRevealResponse = z.infer<typeof ControlPlaneRevealResponseSchema>;
+
 export const IPC = {
   authState: 'wave:auth:state',
   authSignIn: 'wave:auth:sign-in',
@@ -124,5 +147,8 @@ export const IPC = {
   encoderStart: 'wave:encoder:start',
   encoderStop: 'wave:encoder:stop',
   encoderListStatus: 'wave:encoder:list-status',
+  controlPlaneInfo: 'wave:control-plane:info',
+  controlPlaneRevealKey: 'wave:control-plane:reveal-key',
+  controlPlaneRegenerateKey: 'wave:control-plane:regenerate-key',
 } as const;
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

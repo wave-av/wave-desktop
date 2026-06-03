@@ -10,7 +10,23 @@
 import { app, BrowserWindow, shell } from 'electron';
 import { electronApp, optimizer } from '@electron-toolkit/utils';
 import { join } from 'node:path';
-import { hydrateAuth, registerIpcHandlers } from './ipc';
+import { authSnapshot, hydrateAuth, registerIpcHandlers } from './ipc';
+import { initControlPlane, type ControlPlaneHandle } from './control-plane/index';
+import { registerControlPlaneIpc } from './control-plane/ipc-handlers';
+import { readFileSync } from 'node:fs';
+
+const PKG_VERSION = (() => {
+  try {
+    const json = JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf8')) as {
+      version?: string;
+    };
+    return json.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+})();
+
+let controlPlane: ControlPlaneHandle | null = null;
 
 const isDev = !app.isPackaged;
 
@@ -61,6 +77,38 @@ void app.whenReady().then(async () => {
   } catch {
     /* corrupt keychain entry → treated as signed-out by hydrateAuth */
   }
+
+  // Boot the localhost control plane for Bitfocus Companion / vMix / external
+  // multiviewer. Bound 127.0.0.1; bearer-token-auth; no impact on the
+  // renderer's own surface — the operator only sees it when they open the
+  // "Integrations" card in Settings to copy the key for Companion config.
+  const bootAt = new Date();
+  try {
+    controlPlane = await initControlPlane({
+      getState: () => {
+        const a = authSnapshot();
+        return {
+          version: PKG_VERSION,
+          bootAt,
+          signedIn: a.signedIn,
+          subject: a.subject,
+          expiresInSec: a.expiresInSec,
+        };
+      },
+      sendToRenderer: (channel, payload) => {
+        for (const w of BrowserWindow.getAllWindows()) {
+          if (!w.isDestroyed()) w.webContents.send(channel, payload);
+        }
+      },
+    });
+    registerControlPlaneIpc(controlPlane, bootAt);
+  } catch (err) {
+    // Don't block app boot — the rest of wave-desktop still works without
+    // the control plane (it's only the on-host integration surface).
+    // eslint-disable-next-line no-console
+    console.error('[control-plane] failed to start:', err);
+  }
+
   createWindow();
 
   app.on('activate', () => {
@@ -70,4 +118,13 @@ void app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', () => {
+  // Detach but don't await — the OS will reap the socket if we exit before
+  // close completes, and we don't want to hang the quit handler.
+  void controlPlane?.stop().catch(() => {
+    /* best-effort */
+  });
+  controlPlane = null;
 });

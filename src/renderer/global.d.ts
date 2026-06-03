@@ -10,6 +10,8 @@
 
 import type {
   AuthState,
+  ControlPlaneInfo,
+  ControlPlaneRevealResponse,
   EncoderStartRequest,
   EncoderStatus,
   NetworkInterface,
@@ -36,6 +38,12 @@ interface WaveBridge {
     start(req: EncoderStartRequest): Promise<EncoderStatus>;
     stop(id: string): Promise<boolean>;
     listStatus(): Promise<EncoderStatus[]>;
+  };
+  controlPlane: {
+    info(): Promise<ControlPlaneInfo>;
+    /** One-shot reveal — see preload doc + Settings.tsx for handling rules. */
+    revealKey(): Promise<ControlPlaneRevealResponse>;
+    regenerateKey(): Promise<ControlPlaneRevealResponse>;
   };
 }
 
