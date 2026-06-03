@@ -91,7 +91,15 @@ function codecArgs(codec: EncoderStartRequest['codec']): string[] {
   }
 }
 
-const VALID_HOST = /^[a-zA-Z0-9.-]+$/;
+// Accept DNS hostnames + IPv4 dotted-quads + bracketed IPv6 literals.
+// Bracketed IPv6 is the standard URL syntax for SRT/RTSP/HTTP — the SRT
+// URL we build expects `srt://[::1]:6000?...` for v6 targets, so the
+// validator has to accept that shape.
+const VALID_HOST_DNS_OR_V4 = /^[a-zA-Z0-9.-]+$/;
+const VALID_HOST_V6 = /^\[[0-9a-fA-F:.]+\]$/;
+function validHost(host: string): boolean {
+  return VALID_HOST_DNS_OR_V4.test(host) || VALID_HOST_V6.test(host);
+}
 const VALID_STREAM_KEY = /^[a-zA-Z0-9._-]{8,128}$/;
 
 export function buildArgs(
@@ -101,7 +109,7 @@ export function buildArgs(
   // Validate target shape — we never want to splat unvalidated host:port
   // into an SRT URL because that's a small attack surface for an operator
   // who edits an in-app config file by hand.
-  if (!VALID_HOST.test(target.host)) {
+  if (!validHost(target.host)) {
     throw new Error(`invalid SRT host: ${JSON.stringify(target.host)}`);
   }
   if (!Number.isInteger(target.port) || target.port < 1 || target.port > 65535) {
@@ -116,11 +124,16 @@ export function buildArgs(
     `?streamid=${encodeURIComponent(target.streamKey)}` +
     `&mode=caller&latency=120000`;
 
+  // NB: we deliberately do NOT pass `-progress pipe:2`. Despite the name,
+  // it emits a multi-line `frame=…\nfps=…\nbitrate=…\nprogress=continue\n`
+  // block per tick, which our stats-parser.ts (which expects ffmpeg's
+  // single-line interactive stats format) can't parse. We rely on the
+  // default stderr stats line (`frame=NNN fps=NN bitrate=…`) instead.
+  // Switch to `-progress pipe:2` only if/when stats-parser learns the
+  // multi-line key=value format.
   return [
     '-hide_banner',
-    '-nostats', // we print our own; ffmpeg's interactive stats churn the log
     '-loglevel', 'info',
-    '-progress', 'pipe:2', // emit machine-readable progress on stderr
     ...inputArgs(req.source),
     ...codecArgs(req.codec),
     '-c:a', 'aac', '-b:a', '128k', // sane audio default; tweak later

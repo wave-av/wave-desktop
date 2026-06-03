@@ -41,11 +41,17 @@ export async function start(options: StartOptions): Promise<ServerHandle> {
   const handler = createRouter(options.routes, { apiKey: options.apiKey });
   const server: Server = createServer((req, res) => {
     handler(req, res).catch((err: unknown) => {
-      // Last-resort: handler threw without writing a response.
-      if (!res.writableEnded) {
+      // Last-resort: handler threw without writing a response. We must
+      // guard BOTH `headersSent` and `writableEnded` — `setHeader` after
+      // headers have flushed throws `ERR_HTTP_HEADERS_SENT`, which would
+      // crash the connection handler.
+      if (!res.headersSent && !res.writableEnded) {
         res.statusCode = 500;
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.end(JSON.stringify({ error: 'internal error', code: 'INTERNAL' }));
+      } else if (!res.writableEnded) {
+        // Headers already went out — we can only end the response now.
+        res.end();
       }
       // Re-surface in dev logs; production logging is wired in by the caller.
       // eslint-disable-next-line no-console

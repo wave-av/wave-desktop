@@ -54,9 +54,12 @@ export const MonitorConnectRequestSchema = z.object({
 });
 export type MonitorConnectRequest = z.infer<typeof MonitorConnectRequestSchema>;
 
+// Response slug must match the request-side contract — echoing back an
+// unvalidated string would let a future server change weaken the round-
+// trip guarantee that "what the client sent is what comes back."
 export const MonitorConnectResponseSchema = z.object({
   ok: z.literal(true),
-  slug: z.string(),
+  slug: SLUG,
 });
 export type MonitorConnectResponse = z.infer<typeof MonitorConnectResponseSchema>;
 

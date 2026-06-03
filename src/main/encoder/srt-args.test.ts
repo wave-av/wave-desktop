@@ -89,10 +89,24 @@ describe('buildArgs', () => {
     ).toThrow(/stream key shape/);
   });
 
-  it('emits -progress pipe:2 so the lifecycle parser sees machine-readable progress', () => {
+  it('does NOT emit -progress pipe:2 (multi-line format that stats-parser cannot consume)', () => {
+    // Cubic + Sentry flagged this on PR #10: `-progress pipe:2` emits
+    // multi-line key=value blocks, but stats-parser.ts expects ffmpeg's
+    // single-line interactive stats. Until the parser learns the
+    // multi-line format we rely on the default stderr stats line.
     const argv = buildArgs(req(), target);
-    const i = argv.indexOf('-progress');
-    expect(i).toBeGreaterThanOrEqual(0);
-    expect(argv[i + 1]).toBe('pipe:2');
+    expect(argv).not.toContain('-progress');
+    expect(argv).not.toContain('pipe:2');
+  });
+
+  it('accepts bracketed IPv6 SRT targets', () => {
+    const argv = buildArgs(req(), { ...target, host: '[2001:db8::1]' });
+    const url = argv[argv.length - 1] ?? '';
+    expect(url).toContain('srt://[2001:db8::1]:6000');
+  });
+
+  it('still rejects unbracketed IPv6 / shell-special characters in host', () => {
+    expect(() => buildArgs(req(), { ...target, host: '2001:db8::1' })).toThrow(/invalid SRT host/);
+    expect(() => buildArgs(req(), { ...target, host: 'host; rm -rf /' })).toThrow(/invalid SRT host/);
   });
 });
