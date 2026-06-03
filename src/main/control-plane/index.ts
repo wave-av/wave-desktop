@@ -16,9 +16,20 @@
  * a thin lifecycle for a generic HTTP server; this file adds the wiring that
  * only makes sense in the Electron context (key persistence, monitor bridge
  * via IPC). Keeping them separate keeps server.ts re-usable in tests.
+ *
+ * Concurrency model:
+ *   - `rotate()` is serialized via a single-slot mutex. Concurrent callers
+ *     await the in-flight rotation rather than racing the server restart.
+ *   - Rotation is atomic in the sense that we don't persist the new key
+ *     unless the new server successfully bound the listener. On failure we
+ *     try to restart the OLD key; if both restarts fail we propagate the
+ *     error AND leave the handle's `apiKey` matching the on-disk state.
+ *   - The monitor bridge wraps sendToRenderer in try/catch so a thrown
+ *     renderer-broadcast doesn't fail the HTTP response (Companion only
+ *     cares about the wire ACK; renderer dispatch is fire-and-forget).
  */
 
-import { loadOrCreate, regenerate } from './api-key.js';
+import { generate, loadOrCreate, persist } from './api-key.js';
 import { buildRoutes, type ControlPlaneState, type MonitorBridge } from './routes.js';
 import { start, type ServerHandle } from './server.js';
 
@@ -57,15 +68,26 @@ export async function initControlPlane(opts: InitOptions): Promise<ControlPlaneH
 
   // The bridge forwards control-plane requests to the renderer over IPC.
   // It does NOT block on the renderer's response — Companion gets an ACK as
-  // soon as the dispatch is queued. Renderer-side errors surface via the
-  // existing IPC error stream, not the HTTP response, because Companion
-  // doesn't care about per-window outcomes.
+  // soon as the dispatch is queued. A try/catch wraps the dispatch so a
+  // sendToRenderer that throws (e.g. all BrowserWindows destroyed during
+  // shutdown) does NOT fail the HTTP request: Companion correctly sees the
+  // wire-level ACK, and renderer-side errors surface in the main-process
+  // log.
+  const safeSend = (channel: string, payload: unknown): void => {
+    try {
+      opts.sendToRenderer(channel, payload);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[control-plane] renderer dispatch failed', channel, err);
+    }
+  };
+
   const monitor: MonitorBridge = {
     async connect(slug: string): Promise<void> {
-      opts.sendToRenderer(CONTROL_PLANE_RENDERER_CHANNELS.monitorConnect, { slug });
+      safeSend(CONTROL_PLANE_RENDERER_CHANNELS.monitorConnect, { slug });
     },
     async disconnect(): Promise<boolean> {
-      opts.sendToRenderer(CONTROL_PLANE_RENDERER_CHANNELS.monitorDisconnect, {});
+      safeSend(CONTROL_PLANE_RENDERER_CHANNELS.monitorDisconnect, {});
       return true;
     },
   };
@@ -79,6 +101,49 @@ export async function initControlPlane(opts: InitOptions): Promise<ControlPlaneH
 
   let server = await startServer(currentKey);
 
+  // Single-slot mutex for rotate(). Concurrent callers attach to the same
+  // promise rather than racing the stop/start.
+  let rotateInflight: Promise<string> | null = null;
+
+  async function performRotate(): Promise<string> {
+    // Generate the new key in memory only — we do NOT persist until the
+    // new server has bound successfully. That keeps the on-disk key in
+    // sync with the live listener even if startServer() throws.
+    const candidate = generate();
+
+    await server.stop();
+
+    try {
+      server = await startServer(candidate);
+    } catch (startErr) {
+      // New server failed to bind — try to come back online with the OLD
+      // key so the operator keeps a working control plane. If that also
+      // fails, surface the original error AND leave the on-disk key
+      // unchanged (matching whatever state the operator last observed).
+      try {
+        server = await startServer(currentKey);
+      } catch (rollbackErr) {
+        // eslint-disable-next-line no-console
+        console.error(
+          '[control-plane] rotate restart failed AND old-key recovery failed',
+          { startErr, rollbackErr },
+        );
+        throw startErr;
+      }
+      throw startErr;
+    }
+
+    // New server is live on the candidate key — now persist. If THIS
+    // throws, the live listener already accepts the new key, so we
+    // commit the in-memory state too (currentKey ← candidate) and
+    // surface the persistence error to the caller. The next launch will
+    // start with the old key from disk; the operator sees a clear error
+    // immediately.
+    await persist(candidate);
+    currentKey = candidate;
+    return candidate;
+  }
+
   return {
     get port(): number {
       return server.port;
@@ -87,13 +152,11 @@ export async function initControlPlane(opts: InitOptions): Promise<ControlPlaneH
       return currentKey;
     },
     async rotate(): Promise<string> {
-      currentKey = await regenerate();
-      // Rotation requires restarting the router so the new key is in effect.
-      // We close + relist on the same port; in-flight requests with the old
-      // key (if any) will complete on the old socket.
-      await server.stop();
-      server = await startServer(currentKey);
-      return currentKey;
+      if (rotateInflight) return rotateInflight;
+      rotateInflight = performRotate().finally(() => {
+        rotateInflight = null;
+      });
+      return rotateInflight;
     },
     async stop(): Promise<void> {
       await server.stop();

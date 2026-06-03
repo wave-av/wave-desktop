@@ -31,11 +31,21 @@ function path(): string {
   return join(app.getPath('userData'), FILENAME);
 }
 
-function generate(): string {
+/**
+ * Mint a fresh 256-bit hex key without persisting it. Exported because the
+ * control-plane orchestrator needs to defer persistence until AFTER the
+ * server has restarted on the new key — persisting first would create a
+ * window where the on-disk key doesn't match the live listener.
+ */
+export function generate(): string {
   return randomBytes(KEY_BYTES).toString('hex');
 }
 
-async function persist(key: string): Promise<void> {
+/**
+ * Persist a key via safeStorage. Exported (alongside `generate`) so the
+ * orchestrator can do generate → server restart → persist atomically.
+ */
+export async function persist(key: string): Promise<void> {
   if (!safeStorage.isEncryptionAvailable()) {
     throw new Error('safeStorage: OS secure-storage not available');
   }
@@ -78,12 +88,19 @@ export async function regenerate(): Promise<string> {
 }
 
 /**
- * Constant-time compare to avoid timing side-channels on key checks. Returns
- * false on length mismatch (lengths leak less than per-byte timing would).
+ * Constant-time compare to avoid timing side-channels on key checks.
+ *
+ * We compare BUFFER lengths after UTF-8 encoding, not JS string lengths.
+ * String `.length` returns code units, not bytes — `'🔑'.length === 2`
+ * but `Buffer.from('🔑').length === 4`. Two strings of equal `.length`
+ * but unequal byte-length would crash `timingSafeEqual` with
+ * `RangeError: Input buffers must have the same byte length`, turning a
+ * legitimate auth failure into a 500. Returns false on byte-length
+ * mismatch (lengths leak less than per-byte timing would).
  */
 export function safeEqual(expected: string, candidate: string): boolean {
-  if (expected.length !== candidate.length) return false;
   const a = Buffer.from(expected);
   const b = Buffer.from(candidate);
+  if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }

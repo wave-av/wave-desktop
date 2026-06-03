@@ -107,9 +107,13 @@ export function createRouter(routes: Route[], options: RouterOptions) {
     } catch (err) {
       // Handlers are expected to throw on unexpected error only; expected
       // protocol errors should `res.statusCode = 4xx` + return a body.
-      const message = err instanceof Error ? err.message : 'internal error';
-      if (!res.writableEnded) {
-        writeError(res, 500, { error: message, code: 'INTERNAL' });
+      // We deliberately do NOT echo `err.message` to the client — that
+      // leaks internal implementation details. The error is preserved in
+      // server-side logs only.
+      // eslint-disable-next-line no-console
+      console.error('[control-plane] handler threw', err);
+      if (!res.headersSent && !res.writableEnded) {
+        writeError(res, 500, { error: 'internal error', code: 'INTERNAL' });
       }
     }
   };
@@ -118,17 +122,26 @@ export function createRouter(routes: Route[], options: RouterOptions) {
 async function readJsonBody(req: IncomingMessage, max: number): Promise<unknown> {
   return await new Promise<unknown>((resolve, reject) => {
     let total = 0;
+    let aborted = false;
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => {
+      if (aborted) return;
       total += chunk.length;
       if (total > max) {
-        req.destroy();
+        // We can't call req.destroy() — that tears down the socket the
+        // response shares, so the client gets a TCP RST instead of our
+        // 400 envelope. Drain instead: stop accumulating + stop emitting
+        // 'data' events while keeping the socket alive for writeError().
+        aborted = true;
+        req.removeAllListeners('data');
+        req.resume();
         reject(new Error(`body exceeds ${max} bytes`));
         return;
       }
       chunks.push(chunk);
     });
     req.on('end', () => {
+      if (aborted) return;
       if (chunks.length === 0) {
         resolve(undefined);
         return;
