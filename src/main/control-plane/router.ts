@@ -110,7 +110,7 @@ export function createRouter(routes: Route[], options: RouterOptions) {
       // We deliberately do NOT echo `err.message` to the client — that
       // leaks internal implementation details. The error is preserved in
       // server-side logs only.
-      // eslint-disable-next-line no-console
+       
       console.error('[control-plane] handler threw', err);
       if (!res.headersSent && !res.writableEnded) {
         writeError(res, 500, { error: 'internal error', code: 'INTERNAL' });

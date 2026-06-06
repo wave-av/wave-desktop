@@ -105,7 +105,7 @@ void app.whenReady().then(async () => {
   } catch (err) {
     // Don't block app boot — the rest of wave-desktop still works without
     // the control plane (it's only the on-host integration surface).
-    // eslint-disable-next-line no-console
+     
     console.error('[control-plane] failed to start:', err);
   }
 

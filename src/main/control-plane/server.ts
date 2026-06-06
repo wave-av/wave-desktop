@@ -54,7 +54,7 @@ export async function start(options: StartOptions): Promise<ServerHandle> {
         res.end();
       }
       // Re-surface in dev logs; production logging is wired in by the caller.
-      // eslint-disable-next-line no-console
+       
       console.error('[control-plane] unhandled', err);
     });
   });
