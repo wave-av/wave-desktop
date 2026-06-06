@@ -77,7 +77,7 @@ export async function initControlPlane(opts: InitOptions): Promise<ControlPlaneH
     try {
       opts.sendToRenderer(channel, payload);
     } catch (err) {
-      // eslint-disable-next-line no-console
+       
       console.error('[control-plane] renderer dispatch failed', channel, err);
     }
   };
@@ -123,7 +123,7 @@ export async function initControlPlane(opts: InitOptions): Promise<ControlPlaneH
       try {
         server = await startServer(currentKey);
       } catch (rollbackErr) {
-        // eslint-disable-next-line no-console
+         
         console.error(
           '[control-plane] rotate restart failed AND old-key recovery failed',
           { startErr, rollbackErr },
