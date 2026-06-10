@@ -70,7 +70,7 @@ function inputArgs(source: EncoderSource): string[] {
     case 'ndi':
     case 'dante':
       throw new Error(
-        `${source.kind} input requires a wave-transports protocol bridge (not ffmpeg-native); see task #157`,
+        `${source.kind} input requires an SRT/RTMP protocol bridge (not ffmpeg-native); see task #157`,
       );
   }
 }

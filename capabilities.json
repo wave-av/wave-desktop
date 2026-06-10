@@ -26,8 +26,8 @@
   },
   "consumes": {
     "waveProducts": [
-      { "repo": "wave-av/wave-gateway", "endpoint": "/oauth/device/code" },
-      { "repo": "wave-av/wave-gateway", "endpoint": "/oauth/token" }
+      { "repo": "wave-av/api-gateway", "endpoint": "/oauth/device/code" },
+      { "repo": "wave-av/api-gateway", "endpoint": "/oauth/token" }
     ],
     "thirdParty": [
       { "service": "electron-safe-storage", "licenseGated": false }

@@ -62,13 +62,13 @@ describe('buildArgs', () => {
     expect(() => buildArgs(req({ codec: 'av2' }), target)).toThrow(/codec-watch/);
   });
 
-  it('rejects ndi / dante input (require a wave-transports bridge, not ffmpeg-native)', () => {
+  it('rejects ndi / dante input (require a protocol bridge, not ffmpeg-native)', () => {
     expect(() =>
       buildArgs(req({ source: { kind: 'ndi', sourceName: 'cam1' } }), target),
-    ).toThrow(/wave-transports/);
+    ).toThrow(/protocol bridge/);
     expect(() =>
       buildArgs(req({ source: { kind: 'dante', channelId: 'd1' } }), target),
-    ).toThrow(/wave-transports/);
+    ).toThrow(/protocol bridge/);
   });
 
   it('rejects an invalid SRT host (no shell injection via host string)', () => {

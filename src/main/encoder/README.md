@@ -24,7 +24,7 @@ to N-API later if a real workload calls for it.
 | File | Role |
 |---|---|
 | `binary-resolver.ts` | Find ffmpeg on disk (env / `$PATH` / platform defaults) + probe for libsrt |
-| `srt-args.ts` | Build the ffmpeg argv — validates host/port/streamKey shape; refuses ndi/dante (needs wave-transports bridge) |
+| `srt-args.ts` | Build the ffmpeg argv — validates host/port/streamKey shape; refuses ndi/dante (needs a transport bridge) |
 | `stats-parser.ts` | Parse ffmpeg stderr progress lines (`frame=`, `bitrate=`, `time=`) into structured stats |
 | `lifecycle.ts` | `EncoderController` — spawn / track / stop child processes; surfaces progress + errors |
 
@@ -54,8 +54,8 @@ to N-API later if a real workload calls for it.
 | file | ✅ ready | `-re -i <path>` (real-time read) |
 | screen | ✅ ready | macOS `avfoundation`, Linux `x11grab`, Windows `gdigrab` |
 | camera | ✅ ready | macOS `avfoundation`, Linux `v4l2`, Windows `dshow` |
-| ndi | ⏳ deferred | Requires wave-transports protocol bridge (#157) |
-| dante | ⏳ deferred | Requires wave-transports DAL container (#159) |
+| ndi | ⏳ deferred | Requires a transport protocol bridge (#157) |
+| dante | ⏳ deferred | Requires a transport DAL container (#159) |
 
 ## Wiring (follow-up task)
 
