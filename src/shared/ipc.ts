@@ -101,7 +101,25 @@ export const EncoderSourceSchema = z.discriminatedUnion('kind', [
     sourceName: z.string().min(1),
     bandwidth: z.enum(['highest', 'lowest']).default('highest'),
   }),
-  z.object({ kind: z.literal('dante'), channelId: z.string() }),
+  // OMT (Open Media Transport) (#158, GA #74). The open, royalty-free
+  // replacement for NDI — a link-local LAN video transport, so capture is
+  // CLIENT-SIDE (the cloud never sees the source). `sourceName` is the name OMT
+  // advertises; the native adapter resolves it to a receiver. `quality` maps to
+  // the OMT receiver mode — `full` = primary high-quality stream (default),
+  // `preview` = the low-bitrate proxy (for multiview/monitoring). Frames are
+  // decoded by the native adapter and piped into the SAME ffmpeg encoder + SRT
+  // caller tail as NDI/every other source — which relays them over WAVE MESH.
+  z.object({
+    kind: z.literal('omt'),
+    sourceName: z.string().min(1),
+    quality: z.enum(['full', 'preview']).default('full'),
+  }),
+  // Dante (Audinate) (#159, GA #74). Low-latency AUDIO-over-IP — audio-only, so
+  // it encodes raw PCM → AAC (not the rawvideo path). Subscribed on the LAN, so
+  // capture is CLIENT-SIDE. `channelId` names the Dante flow/channel the native
+  // adapter subscribes to; decoded PCM is piped into an audio-only ffmpeg tail
+  // that pushes over the shared SRT caller → WAVE MESH.
+  z.object({ kind: z.literal('dante'), channelId: z.string().min(1) }),
 ]);
 export type EncoderSource = z.infer<typeof EncoderSourceSchema>;
 

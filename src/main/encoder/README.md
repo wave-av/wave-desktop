@@ -55,7 +55,26 @@ to N-API later if a real workload calls for it.
 | screen | ✅ ready | macOS `avfoundation`, Linux `x11grab`, Windows `gdigrab` |
 | camera | ✅ ready | macOS `avfoundation`, Linux `v4l2`, Windows `dshow` |
 | ndi | 🟡 scaffolded (#157) | Client-side LAN capture. Wiring complete (`ndi/`): schema, `buildNdiArgs` (rawvideo stdin → shared encoder+SRT tail), `NdiSourceController`. Native leaf **fails closed** — `resolveNdiAdapter()` throws "NDI SDK binary not provisioned (#169)" until the redistribution license (#169/Vizrt) clears and `@wave-av/wave-transports` ships the native adapter. No synthetic frames. |
-| dante | ⏳ deferred | Requires a transport DAL container (#159) |
+| omt | 🟡 scaffolded (#158, GA #74) | Client-side LAN capture — the open (royalty-free) NDI replacement. Wiring complete (`omt/`): schema (`quality` full/preview), `buildOmtArgs` (rawvideo stdin → shared encoder+SRT tail, mirrors NDI), `OmtSourceController`. Native leaf **fails closed** — `resolveOmtAdapter()` throws "OMT native binding not provisioned (#168)" until `@wave-av/wave-transports` ships the libomt adapter. No synthetic frames. |
+| dante | 🟡 scaffolded (#159, GA #74) | Client-side LAN AUDIO capture (Audinate). **Audio-only** path (`dante/`): `buildDanteArgs` (raw PCM stdin → AAC → shared SRT tail, no video codec), `DanteSourceController`. Native leaf **fails closed** — `resolveDanteAdapter()` throws "Dante SDK not provisioned (#160)" until the Audinate redistribution license (#160) clears and `@wave-av/wave-transports` ships the native adapter. No synthetic audio. |
+
+### OMT + Dante capture paths (`omt/`, `dante/`, GA #74)
+
+Same client-side seam as NDI (LAN transports the cloud can't see). **OMT** is the
+open NDI replacement — video, so it reuses the NDI rawvideo-stdin shape verbatim
+(`buildOmtArgs` → shared `codecArgs` + `srtCallerUrl`). **Dante** is audio-over-IP,
+so it diverges to an **audio-only** tail: raw PCM stdin → AAC → the same shared SRT
+caller. All three (NDI/OMT/Dante) push over the SRT egress rail, which is what
+relays them onto **WAVE MESH** (transport SSOT: NDI/OMT/Dante → MESH). Each native
+leaf fails closed until `@wave-av/wave-transports` provisions its binding.
+
+| File | Role |
+|---|---|
+| `omt/types.ts` · `dante/types.ts` | The transport-adapter boundary — the only OMT/Dante types wave-desktop consumes. Keeps each native, license-gated leaf swappable. |
+| `omt/omt-args.ts` | `buildOmtArgs(format, codec, target)` — rawvideo stdin (mirrors NDI) → shared encoder + SRT tail. |
+| `dante/dante-args.ts` | `buildDanteArgs(format, target)` — rawaudio PCM stdin → AAC → shared SRT tail (audio-only). |
+| `omt/capability.ts` · `dante/capability.ts` | `resolveOmtAdapter()` / `resolveDanteAdapter()` — load the native adapter or **fail closed** with an actionable #168/#160 error. Injectable loader for tests. |
+| `omt/source.ts` · `dante/source.ts` | `OmtSourceController` / `DanteSourceController` — capability-gate, open the receiver, spawn ffmpeg dimensioned to the first frame/buffer, pump decoded media into stdin. |
 
 ### NDI capture path (`ndi/`, #157)
 

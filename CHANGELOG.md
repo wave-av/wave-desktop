@@ -7,6 +7,20 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **OMT + Dante capture source scaffolds (#158 / #159, GA #74).** Complete the
+  MESH transport trio alongside NDI. **OMT** (`src/main/encoder/omt/`) — the open,
+  royalty-free NDI replacement — mirrors the NDI path verbatim: client-side LAN
+  video → native adapter → rawvideo stdin → shared encoder + SRT caller tail
+  (`buildOmtArgs`, `OmtSourceController`); schema carries a typed `quality`
+  (`full`/`preview`). **Dante** (`src/main/encoder/dante/`) is audio-over-IP, so
+  it diverges to an **audio-only** tail: raw PCM stdin → AAC → the same shared SRT
+  caller (`buildDanteArgs`, `DanteSourceController`). All three sources push over
+  the SRT egress rail that relays onto **WAVE MESH** (transport SSOT:
+  NDI/OMT/Dante → MESH). Each native binding is **not bundled** — OMT fails closed
+  with "OMT native binding not provisioned (#168)", Dante with "Dante SDK not
+  provisioned (#160)" — until `@wave-av/wave-transports` ships the per-platform
+  adapter. No synthetic frames/audio. 19 vitest cases (schema, arg builder,
+  frame/PCM routing, fail-closed gate).
 - **NDI capture source scaffold (#157).** Client-side NDI ingest wired into the
   existing ffmpeg + SRT egress rail as a new source. `src/main/encoder/ndi/`:
   typed adapter boundary (`types.ts`), `buildNdiArgs` (rawvideo-from-stdin →
