@@ -54,8 +54,29 @@ to N-API later if a real workload calls for it.
 | file | ✅ ready | `-re -i <path>` (real-time read) |
 | screen | ✅ ready | macOS `avfoundation`, Linux `x11grab`, Windows `gdigrab` |
 | camera | ✅ ready | macOS `avfoundation`, Linux `v4l2`, Windows `dshow` |
-| ndi | ⏳ deferred | Requires a transport protocol bridge (#157) |
+| ndi | 🟡 scaffolded (#157) | Client-side LAN capture. Wiring complete (`ndi/`): schema, `buildNdiArgs` (rawvideo stdin → shared encoder+SRT tail), `NdiSourceController`. Native leaf **fails closed** — `resolveNdiAdapter()` throws "NDI SDK binary not provisioned (#169)" until the redistribution license (#169/Vizrt) clears and `@wave-av/wave-transports` ships the native adapter. No synthetic frames. |
 | dante | ⏳ deferred | Requires a transport DAL container (#159) |
+
+### NDI capture path (`ndi/`, #157)
+
+NDI is a link-local (mDNS) protocol, so capture MUST run on the operator's
+machine — the cloud can never see the source. NDI slots in as a **new source
+feeding the existing SRT egress rail**, not a new rail:
+
+```
+NDI source (LAN) ─▶ native adapter ─▶ raw frames ─▶ ffmpeg stdin (-f rawvideo -i pipe:0)
+                    (@wave-av/wave-transports,        │
+                     NDI Advanced SDK, #169-gated)    ▼
+                                             H.264/HEVC/AV1  ─▶  SRT caller
+                                             (codecArgs, shared)   (srtCallerUrl, shared)
+```
+
+| File | Role |
+|---|---|
+| `ndi/types.ts` | The transport-adapter boundary — the only NDI types wave-desktop consumes. Keeps the native, license-gated leaf swappable. |
+| `ndi/ndi-args.ts` | `buildNdiArgs(format, codec, target)` — rawvideo-from-stdin input dimensioned to the NDI frame, then the SAME `codecArgs` + `srtCallerUrl` tail as every other source. |
+| `ndi/capability.ts` | `resolveNdiAdapter()` — loads the native adapter or **fails closed** with an actionable #169 error. Injectable loader for tests. |
+| `ndi/source.ts` | `NdiSourceController` — capability-gates, opens the receiver, spawns ffmpeg dimensioned to the first frame, pumps decoded frames into stdin. |
 
 ## Wiring (follow-up task)
 

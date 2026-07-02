@@ -88,7 +88,19 @@ export const EncoderSourceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('screen'), displayId: z.string() }),
   z.object({ kind: z.literal('camera'), deviceId: z.string() }),
   z.object({ kind: z.literal('file'), path: z.string() }),
-  z.object({ kind: z.literal('ndi'), sourceName: z.string() }),
+  // NDI (#157). Discovered on the LAN via mDNS — the capture is CLIENT-SIDE
+  // because NDI is a link-local protocol the cloud can never see. `sourceName`
+  // is the human-facing name NDI advertises (e.g. "STUDIO-PC (Cam 1)"); the
+  // native adapter resolves it to a receiver. `bandwidth` maps to the NDI
+  // receiver bandwidth mode — `highest` = full-quality stream (default),
+  // `lowest` = the proxy/preview stream (a fraction of the bitrate, for
+  // multiview/monitoring). Frames are decoded by the native adapter and piped
+  // into the SAME ffmpeg encoder + SRT caller tail every other source uses.
+  z.object({
+    kind: z.literal('ndi'),
+    sourceName: z.string().min(1),
+    bandwidth: z.enum(['highest', 'lowest']).default('highest'),
+  }),
   z.object({ kind: z.literal('dante'), channelId: z.string() }),
 ]);
 export type EncoderSource = z.infer<typeof EncoderSourceSchema>;

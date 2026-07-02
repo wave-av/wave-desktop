@@ -69,14 +69,21 @@ function inputArgs(source: EncoderSource): string[] {
       throw new Error(`camera capture not supported on ${process.platform}`);
     case 'ndi':
     case 'dante':
+      // NDI/dante are NOT ffmpeg-native inputs — ffmpeg cannot open a `-i ndi://…`
+      // device without an external SDK. They require a transport protocol bridge:
+      // a native adapter decodes frames off the wire and pipes RAW frames into
+      // ffmpeg via stdin. NDI takes that path through `buildNdiArgs()` (below) +
+      // the NDI source controller in `./ndi/`; `buildArgs()` handles only the
+      // ffmpeg-native device/file sources. See task #157.
       throw new Error(
-        `${source.kind} input requires an SRT/RTMP protocol bridge (not ffmpeg-native); see task #157`,
+        `${source.kind} input requires a transport protocol bridge (not ffmpeg-native); ` +
+          `NDI is bridged via buildNdiArgs() + the ndi/ source controller — see task #157`,
       );
   }
 }
 
 /** Codec → ffmpeg encoder name + sane defaults. */
-function codecArgs(codec: EncoderStartRequest['codec']): string[] {
+export function codecArgs(codec: EncoderStartRequest['codec']): string[] {
   switch (codec) {
     case 'h264':
       return ['-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p'];
@@ -102,13 +109,15 @@ function validHost(host: string): boolean {
 }
 const VALID_STREAM_KEY = /^[a-zA-Z0-9._-]{8,128}$/;
 
-export function buildArgs(
-  req: EncoderStartRequest,
-  target: SrtTarget,
-): string[] {
-  // Validate target shape — we never want to splat unvalidated host:port
-  // into an SRT URL because that's a small attack surface for an operator
-  // who edits an in-app config file by hand.
+/**
+ * Validate an SrtTarget and build the caller-mode SRT output URL. Shared by
+ * `buildArgs()` (ffmpeg-native sources) and `buildNdiArgs()` (stdin-fed NDI
+ * source) so BOTH source paths land on the identical, validated SRT tail —
+ * the gateway-facing `srt://host:port?streamid=<key>&mode=caller` convention.
+ * We never splat an unvalidated host/port/key into the URL: an operator who
+ * hand-edits an in-app config file is a small but real injection surface.
+ */
+export function srtCallerUrl(target: SrtTarget): string {
   if (!validHost(target.host)) {
     throw new Error(`invalid SRT host: ${JSON.stringify(target.host)}`);
   }
@@ -118,11 +127,18 @@ export function buildArgs(
   if (!VALID_STREAM_KEY.test(target.streamKey)) {
     throw new Error('invalid stream key shape');
   }
-
-  const srtUrl =
+  return (
     `srt://${target.host}:${target.port}` +
     `?streamid=${encodeURIComponent(target.streamKey)}` +
-    `&mode=caller&latency=120000`;
+    `&mode=caller&latency=120000`
+  );
+}
+
+export function buildArgs(
+  req: EncoderStartRequest,
+  target: SrtTarget,
+): string[] {
+  const srtUrl = srtCallerUrl(target);
 
   // NB: we deliberately do NOT pass `-progress pipe:2`. Despite the name,
   // it emits a multi-line `frame=…\nfps=…\nbitrate=…\nprogress=continue\n`

@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **NDI capture source scaffold (#157).** Client-side NDI ingest wired into the
+  existing ffmpeg + SRT egress rail as a new source. `src/main/encoder/ndi/`:
+  typed adapter boundary (`types.ts`), `buildNdiArgs` (rawvideo-from-stdin →
+  shared encoder + SRT caller tail), a fail-closed capability gate
+  (`resolveNdiAdapter`), and `NdiSourceController` (opens receiver → pumps
+  decoded frames into ffmpeg stdin). `EncoderSource` `ndi` now carries a typed
+  `bandwidth` (`highest`/`lowest`). The native NDI binding is **not bundled** —
+  capture fails closed with an actionable "NDI SDK binary not provisioned
+  (#169)" error until the redistribution license (#169) is resolved and
+  `@wave-av/wave-transports` ships the native adapter. No synthetic frames.
+
 ## [0.3.0] — control-plane HTTP API
 
 ### Added

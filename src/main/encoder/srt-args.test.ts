@@ -64,7 +64,7 @@ describe('buildArgs', () => {
 
   it('rejects ndi / dante input (require a protocol bridge, not ffmpeg-native)', () => {
     expect(() =>
-      buildArgs(req({ source: { kind: 'ndi', sourceName: 'cam1' } }), target),
+      buildArgs(req({ source: { kind: 'ndi', sourceName: 'cam1', bandwidth: 'highest' } }), target),
     ).toThrow(/protocol bridge/);
     expect(() =>
       buildArgs(req({ source: { kind: 'dante', channelId: 'd1' } }), target),
