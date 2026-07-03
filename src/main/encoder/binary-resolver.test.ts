@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseVersionOutput, pathOnDisk } from './binary-resolver.ts';
+import { parseVersionOutput, pathOnDisk, hasConfigFlag } from './binary-resolver.ts';
 
 describe('parseVersionOutput', () => {
   it('extracts version + libsrt presence from a real ffmpeg -version dump', () => {
@@ -18,6 +18,28 @@ libavutil      59. 39.100 / 59. 39.100
     const r = parseVersionOutput(sample);
     expect(r.version).toBe('7.1.1');
     expect(r.hasLibsrt).toBe(true);
+    // Stock Homebrew build carries libsrt but NOT the NDI/OMT devices.
+    expect(r.hasNdi).toBe(false);
+    expect(r.hasOmt).toBe(false);
+  });
+
+  it('detects NDI + OMT input devices in a custom pro-AV build', () => {
+    const sample = `ffmpeg version 7.1 Copyright (c) 2000-2024
+configuration: --enable-libsrt --enable-libndi_newtek --enable-libomt --enable-libx264
+`;
+    const r = parseVersionOutput(sample);
+    expect(r.hasNdi).toBe(true);
+    expect(r.hasOmt).toBe(true);
+  });
+
+  it('does not false-positive on a bare lib mention without the --enable- flag', () => {
+    const sample = `ffmpeg version 7.1
+Note: libndi_newtek and libomt are optional
+configuration: --enable-libx264
+`;
+    const r = parseVersionOutput(sample);
+    expect(r.hasNdi).toBe(false);
+    expect(r.hasOmt).toBe(false);
   });
 
   it('returns hasLibsrt=false when --enable-libsrt is missing', () => {
@@ -58,6 +80,17 @@ configuration: --prefix=/usr --enable-libx264
     expect(r.hasLibsrt).toBe(true); // because --enable-libsrt-static contains --enable-libsrt
     // Confirm bare-mention does NOT match:
     expect(parseVersionOutput('ffmpeg version 6.0\nNote: libsrt is good\n').hasLibsrt).toBe(false);
+  });
+});
+
+describe('hasConfigFlag', () => {
+  it('matches the exact flag and the -suffixed variant', () => {
+    const cfg = 'configuration: --enable-libsrt-static --enable-libx264';
+    expect(hasConfigFlag(cfg, 'libsrt')).toBe(true);
+    expect(hasConfigFlag(cfg, 'libx264')).toBe(true);
+  });
+  it('does not match a bare lib name without --enable-', () => {
+    expect(hasConfigFlag('libomt is available', 'libomt')).toBe(false);
   });
 });
 
