@@ -88,8 +88,16 @@ export const EncoderSourceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('screen'), displayId: z.string() }),
   z.object({ kind: z.literal('camera'), deviceId: z.string() }),
   z.object({ kind: z.literal('file'), path: z.string() }),
-  z.object({ kind: z.literal('ndi'), sourceName: z.string() }),
-  z.object({ kind: z.literal('dante'), channelId: z.string() }),
+  // Pro-AV network transports. `sourceName` is the human-readable NDI/OMT
+  // source string ffmpeg matches against its discovery list — it may contain
+  // spaces and parentheses (e.g. `DEV-5 (Camera 1)`), so it never touches a
+  // shell: it's a single argv element handed straight to spawn().
+  z.object({ kind: z.literal('ndi'), sourceName: z.string().min(1) }),
+  z.object({ kind: z.literal('omt'), sourceName: z.string().min(1) }),
+  // Dante audio arrives as a CoreAudio (macOS) / WASAPI (Windows) / ALSA
+  // (Linux) device courtesy of Dante Virtual Soundcard; `deviceId` is the
+  // OS-specific device index or name that avfoundation/dshow/alsa expects.
+  z.object({ kind: z.literal('dante'), channelId: z.string().min(1) }),
 ]);
 export type EncoderSource = z.infer<typeof EncoderSourceSchema>;
 
