@@ -4,7 +4,7 @@
   "description": "WAVE Operator Console — Electron desktop app for first/last-mile WAVE workflows",
   "main": "./out/main/index.js",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "homepage": "https://wave.online/build",
   "repository": {
     "type": "git",
