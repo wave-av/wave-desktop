@@ -12,9 +12,12 @@ import {
   SignInEventSchema,
   ControlPlaneInfoSchema,
   ControlPlaneRevealResponseSchema,
+  CrestResultSchema,
   type AuthState,
   type ControlPlaneInfo,
   type ControlPlaneRevealResponse,
+  type CrestCommand,
+  type CrestResult,
   type EncoderStartRequest,
   type EncoderStatus,
   type NetworkInterface,
@@ -81,6 +84,18 @@ const wave = {
     regenerateKey: async (): Promise<ControlPlaneRevealResponse> => {
       const raw = await ipcRenderer.invoke(IPC.controlPlaneRegenerateKey);
       return ControlPlaneRevealResponseSchema.parse(raw);
+    },
+  },
+  crest: {
+    /** Sends a WAVE Device Control Protocol v1 command through the gateway. */
+    control: async (org: string, device: string, command: CrestCommand): Promise<CrestResult> => {
+      const raw = await ipcRenderer.invoke(IPC.crestControl, { org, device, command });
+      return CrestResultSchema.parse(raw);
+    },
+    /** Reads current device state (org-scoped state-track subscribe descriptor). */
+    state: async (org: string, device: string): Promise<CrestResult> => {
+      const raw = await ipcRenderer.invoke(IPC.crestState, { org, device });
+      return CrestResultSchema.parse(raw);
     },
   },
 } as const;
