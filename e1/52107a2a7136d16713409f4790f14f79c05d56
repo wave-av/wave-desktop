@@ -1,0 +1,48 @@
+src/main/ipc.ts
+  s_157583aa3b6686::t_f5a47f0c53b063 31-33,35
+  s_157583aa3b6686::t_921b6777c7b6b1 307-413
+package.json
+  s_157583aa3b6686::t_7e141ad4a57428 32
+src/shared/ipc.ts
+  s_157583aa3b6686::t_12d21561429222 145-203
+  s_157583aa3b6686::t_4f7bc100a981d0 220-221
+src/renderer/styles.css
+  s_157583aa3b6686::t_31905a60427802 2-3,6
+src/renderer/views/Control.tsx
+  s_157583aa3b6686::t_19519d42c42741 1-219
+src/preload/index.ts
+  s_157583aa3b6686::t_34438af93c8791 15,19-20
+  s_157583aa3b6686::t_faf241e2e4aa71 89-100
+src/main/control-plane/crest-envelope.test.ts
+  s_157583aa3b6686::t_9b92208ffaa1c1 1-36
+src/renderer/global.d.ts
+  s_157583aa3b6686::t_9aa0865f38c796 50-53
+  s_157583aa3b6686::t_a38f6eb5b46e1c 15-16
+src/renderer/App.tsx
+  s_157583aa3b6686::t_917f3982163387 8,10
+  s_157583aa3b6686::t_bec3a2726b33db 49
+  s_157583aa3b6686::t_465a0039fa21ab 63
+  s_157583aa3b6686::t_9e625a0493129f 30
+tailwind.config.ts
+  s_157583aa3b6686::t_eca8e8ba46c9e8 1-8
+src/main/control-plane/crest-envelope.ts
+  s_157583aa3b6686::t_26f4626591582d 1-39
+package-lock.json
+  s_157583aa3b6686::t_d5caa285f41633 10,13,341-346,1462-1499,1643-2637,2639-2642,2645-2648,2650-2652,2654-2657,2660-2663,2666,2668-2675,2678-2681,2684,2686-2693,2696-2699,2701-2716,2719-2724,3115-3123,3566,4012-4046,4340-4351,4782-4793,4840-4848,4989-5004,5135-5140,6240-6248,7233-7241,7938-7959,7972-7987,7998-8066,8516-8525,8745-8750,8884-8926
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "e152107a2a7136d16713409f4790f14f79c05d56",
+  "prompts": {},
+  "sessions": {
+    "s_157583aa3b6686": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0800e731-23e3-40e5-abec-27e99bf7f8c7",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
