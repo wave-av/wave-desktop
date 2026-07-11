@@ -1,0 +1,20 @@
+.github/workflows/lint.yml
+  s_157583aa3b6686::t_59f8dd68149ebb 8
+  s_157583aa3b6686::t_674f2aac836f61 15-16,25-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "26b4b8592fc7ab1ecd4252c05266ed9429b435d9",
+  "prompts": {},
+  "sessions": {
+    "s_157583aa3b6686": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0800e731-23e3-40e5-abec-27e99bf7f8c7",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
