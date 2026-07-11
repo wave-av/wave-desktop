@@ -28,7 +28,11 @@ import {
   type NetworkInterface,
   type Settings,
   type SignInEvent,
+  CrestControlRequestSchema,
+  CrestStateRequestSchema,
+  type CrestResult,
 } from '@shared/ipc';
+import { buildCrestEnvelope } from './control-plane/crest-envelope';
 import {
   OAuthError,
   refreshToken,
@@ -300,6 +304,113 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.encoderListStatus, (): EncoderStatus[] =>
     encoderController.list(),
   );
+
+  // ── device control (E-CONTROL) ──────────────────────────────────────────
+  // Renderer never holds the bearer token — main mints it via getAccessToken()
+  // and forwards the frozen envelope. Non-2xx (503 not-armed / 403 / 400) is
+  // returned as a structured `ok:false` result, never thrown as a generic
+  // error, so the UI can surface the real gateway outcome honestly.
+  ipcMain.handle(
+    IPC.crestControl,
+    async (_e: IpcMainInvokeEvent, raw: unknown): Promise<CrestResult> => {
+      const req = CrestControlRequestSchema.parse(raw);
+      const token = await getAccessToken();
+      if (!token) {
+        return {
+          ok: false,
+          status: 401,
+          body: null,
+          message: 'not signed in — sign in with WAVE first',
+        };
+      }
+      const envelope = buildCrestEnvelope(req.org, req.device, req.command);
+      return postCrestControl(settings.gatewayBase, token, envelope);
+    },
+  );
+
+  ipcMain.handle(
+    IPC.crestState,
+    async (_e: IpcMainInvokeEvent, raw: unknown): Promise<CrestResult> => {
+      const req = CrestStateRequestSchema.parse(raw);
+      const token = await getAccessToken();
+      if (!token) {
+        return {
+          ok: false,
+          status: 401,
+          body: null,
+          message: 'not signed in — sign in with WAVE first',
+        };
+      }
+      return getCrestState(settings.gatewayBase, token, req.org, req.device);
+    },
+  );
+}
+
+async function postCrestControl(
+  gatewayBase: string,
+  token: string,
+  envelope: ReturnType<typeof buildCrestEnvelope>,
+): Promise<CrestResult> {
+  try {
+    const res = await fetch(`${gatewayBase}/v1/crest/control`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(envelope),
+    });
+    const body = await safeJson(res);
+    if (res.ok) return { ok: true, status: res.status, body };
+    return { ok: false, status: res.status, body, message: messageFor(res.status, body) };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      body: null,
+      message: err instanceof Error ? err.message : 'network error contacting gateway',
+    };
+  }
+}
+
+async function getCrestState(
+  gatewayBase: string,
+  token: string,
+  org: string,
+  device: string,
+): Promise<CrestResult> {
+  try {
+    const url = new URL(`${gatewayBase}/v1/crest/state`);
+    url.searchParams.set('device', device);
+    url.searchParams.set('org', org);
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const body = await safeJson(res);
+    if (res.ok) return { ok: true, status: res.status, body };
+    return { ok: false, status: res.status, body, message: messageFor(res.status, body) };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      body: null,
+      message: err instanceof Error ? err.message : 'network error contacting gateway',
+    };
+  }
+}
+
+async function safeJson(res: Response): Promise<unknown> {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+function messageFor(status: number, body: unknown): string {
+  const detail =
+    body && typeof body === 'object' && 'error' in body && typeof (body as { error: unknown }).error === 'string'
+      ? (body as { error: string }).error
+      : null;
+  if (status === 503) return detail ?? 'control bridge not armed';
+  if (status === 403) return detail ?? 'forbidden — cross-org device';
+  if (status === 400) return detail ?? 'malformed request';
+  return detail ?? `gateway returned ${status}`;
 }
 
 // Re-export for tests that exercise the JWT helpers without booting Electron.

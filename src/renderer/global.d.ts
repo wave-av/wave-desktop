@@ -12,6 +12,8 @@ import type {
   AuthState,
   ControlPlaneInfo,
   ControlPlaneRevealResponse,
+  CrestCommand,
+  CrestResult,
   EncoderStartRequest,
   EncoderStatus,
   NetworkInterface,
@@ -44,6 +46,10 @@ interface WaveBridge {
     /** One-shot reveal — see preload doc + Settings.tsx for handling rules. */
     revealKey(): Promise<ControlPlaneRevealResponse>;
     regenerateKey(): Promise<ControlPlaneRevealResponse>;
+  };
+  crest: {
+    control(org: string, device: string, command: CrestCommand): Promise<CrestResult>;
+    state(org: string, device: string): Promise<CrestResult>;
   };
 }
 

@@ -5,8 +5,9 @@ import { EncodersView } from './views/Encoders';
 import { ReceiversView } from './views/Receivers';
 import { MultiviewView } from './views/Multiview';
 import { SettingsView } from './views/Settings';
+import { ControlView } from './views/Control';
 
-type Tab = 'encoders' | 'receivers' | 'multiview' | 'settings';
+type Tab = 'encoders' | 'receivers' | 'multiview' | 'control' | 'settings';
 
 interface UiState {
   tab: Tab;
@@ -26,6 +27,7 @@ const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
   { id: 'encoders', label: 'Encoders' },
   { id: 'receivers', label: 'Receivers' },
   { id: 'multiview', label: 'Multiview' },
+  { id: 'control', label: 'Control' },
   { id: 'settings', label: 'Settings' },
 ];
 
@@ -44,6 +46,7 @@ export function App(): React.JSX.Element {
         {tab === 'encoders' && <EncodersView />}
         {tab === 'receivers' && <ReceiversView />}
         {tab === 'multiview' && <MultiviewView />}
+        {tab === 'control' && <ControlView />}
         {tab === 'settings' && <SettingsView />}
       </main>
     </div>
@@ -57,7 +60,7 @@ function TitleBar(): React.JSX.Element {
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
       <div className="flex items-center gap-3">
-        <span className="text-sm font-semibold tracking-wide text-zinc-100">WAVE</span>
+        <b className="wm text-sm text-zinc-100">WAVE</b>
         <span className="text-xs text-zinc-500">Operator Console</span>
       </div>
     </header>
