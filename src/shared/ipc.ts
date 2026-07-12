@@ -219,5 +219,6 @@ export const IPC = {
   controlPlaneRegenerateKey: 'wave:control-plane:regenerate-key',
   crestControl: 'wave:crest:control',
   crestState: 'wave:crest:state',
+  uiOpenDeviceControl: 'wave:ui:open-device-control',
 } as const;
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

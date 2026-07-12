@@ -50,6 +50,13 @@ export function ControlView(): React.JSX.Element {
         <b className="wm">WAVE</b> Device Control
       </h2>
 
+      <div className="flex items-center justify-between gap-4 rounded border border-zinc-800 p-4">
+        <p className="text-xs text-zinc-500">Manage all your WAVE devices on the web.</p>
+        <ActionButton onClick={() => void window.wave.ui.openDeviceControl()}>
+          Device Control
+        </ActionButton>
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
         <LabeledInput label="Org" value={org} onChange={setOrg} placeholder="org_123" />
         <LabeledInput label="Device" value={device} onChange={setDevice} placeholder="device_abc" />
