@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 type Handler = (event: unknown, payload?: unknown) => unknown;
 
 const { openExternal, handlers } = vi.hoisted(() => ({
-  openExternal: vi.fn(async (_url: string) => {}),
+  openExternal: vi.fn(async (): Promise<void> => {}),
   handlers: new Map<string, Handler>(),
 }));
 
