@@ -6,4 +6,4 @@
  */
 
 /** Web-always Mesh device-control surface (E-CONTROL #78b). */
-export const DEVICE_CONTROL_URL = 'https://app.wave.online/control/devices';
+export const DEVICE_CONTROL_URL = 'https://console.wave.online/control/devices';
