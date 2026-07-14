@@ -31,6 +31,7 @@ import {
   CrestControlRequestSchema,
   CrestStateRequestSchema,
   type CrestResult,
+  type SessionPublishDescriptor,
 } from '@shared/ipc';
 import { buildCrestEnvelope } from './control-plane/crest-envelope';
 import {
@@ -342,6 +343,23 @@ export function registerIpcHandlers(): void {
         };
       }
       return getCrestState(settings.gatewayBase, token, req.org, req.device);
+    },
+  );
+
+  // ── realtime session (WHIP publish — #74) ─────────────────────────────────
+  // One-shot descriptor: the frozen WHIP endpoint + the current bearer. The
+  // renderer feeds this straight into @wave-av/whip-publish's publish(). We
+  // never persist the bearer here beyond the live token set, and it never
+  // touches disk on the renderer side (see SessionPublishDescriptorSchema doc).
+  ipcMain.handle(
+    IPC.sessionPublishDescriptor,
+    async (): Promise<SessionPublishDescriptor> => {
+      const bearer = await getAccessToken();
+      if (!bearer) {
+        throw new Error('not signed in — sign in with WAVE before joining a session');
+      }
+      const base = settings.gatewayBase.replace(/\/$/, '');
+      return { endpoint: `${base}/v1/whip/publish`, bearer };
     },
   );
 }

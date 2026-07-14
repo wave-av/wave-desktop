@@ -201,6 +201,32 @@ export const CrestStateRequestSchema = z.object({
 });
 export type CrestStateRequest = z.infer<typeof CrestStateRequestSchema>;
 
+// ── realtime session (WHIP publish — #74 session core) ──────────────────────
+// The happy-path "join a WAVE realtime session": the renderer enumerates
+// capture devices (navigator.mediaDevices — media MUST live renderer-side),
+// then asks main for a one-shot WHIP publish descriptor. Main owns the bearer
+// (the OAuth→JWT access token from safeStorage) and returns it alongside the
+// frozen WHIP endpoint. The bearer is a SECRET: the renderer hands it straight
+// to @wave-av/whip-publish's `publish()` and NEVER persists it (same one-shot
+// discipline as controlPlane.revealKey). Media never crosses the IPC bridge —
+// only this small descriptor does.
+
+export const SessionPublishDescriptorSchema = z.object({
+  /**
+   * The gateway WHIP publish endpoint — `https://api.wave.online/v1/whip/publish`.
+   * Derived from `settings.gatewayBase`; the client only ever talks to the gateway
+   * (frozen WHIP-v1 invariant §9.3), never an edge URL.
+   */
+  endpoint: z.string().url(),
+  /**
+   * `Authorization: Bearer <token>` value for the publish. SECRET — treat like
+   * revealKey(): hand to publish() immediately, never store in component state
+   * beyond the in-flight session.
+   */
+  bearer: z.string().min(1),
+});
+export type SessionPublishDescriptor = z.infer<typeof SessionPublishDescriptorSchema>;
+
 export const IPC = {
   authState: 'wave:auth:state',
   authSignIn: 'wave:auth:sign-in',
@@ -219,5 +245,7 @@ export const IPC = {
   controlPlaneRegenerateKey: 'wave:control-plane:regenerate-key',
   crestControl: 'wave:crest:control',
   crestState: 'wave:crest:state',
+  /** one-shot WHIP publish descriptor (endpoint + bearer) for a realtime session */
+  sessionPublishDescriptor: 'wave:session:publish-descriptor',
 } as const;
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
