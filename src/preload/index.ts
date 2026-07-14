@@ -13,11 +13,13 @@ import {
   ControlPlaneInfoSchema,
   ControlPlaneRevealResponseSchema,
   CrestResultSchema,
+  SessionPublishDescriptorSchema,
   type AuthState,
   type ControlPlaneInfo,
   type ControlPlaneRevealResponse,
   type CrestCommand,
   type CrestResult,
+  type SessionPublishDescriptor,
   type EncoderStartRequest,
   type EncoderStatus,
   type NetworkInterface,
@@ -96,6 +98,17 @@ const wave = {
     state: async (org: string, device: string): Promise<CrestResult> => {
       const raw = await ipcRenderer.invoke(IPC.crestState, { org, device });
       return CrestResultSchema.parse(raw);
+    },
+  },
+  session: {
+    /**
+     * One-shot WHIP publish descriptor (endpoint + bearer). Hand the result
+     * straight to @wave-av/whip-publish's `publish()`; never persist `bearer`.
+     * Throws (rejects) when not signed in.
+     */
+    publishDescriptor: async (): Promise<SessionPublishDescriptor> => {
+      const raw = await ipcRenderer.invoke(IPC.sessionPublishDescriptor);
+      return SessionPublishDescriptorSchema.parse(raw);
     },
   },
   ui: {

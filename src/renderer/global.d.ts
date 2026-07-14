@@ -17,6 +17,7 @@ import type {
   EncoderStartRequest,
   EncoderStatus,
   NetworkInterface,
+  SessionPublishDescriptor,
   Settings,
   SignInEvent,
   SignInRequest,
@@ -50,6 +51,10 @@ interface WaveBridge {
   crest: {
     control(org: string, device: string, command: CrestCommand): Promise<CrestResult>;
     state(org: string, device: string): Promise<CrestResult>;
+  };
+  session: {
+    /** One-shot WHIP publish descriptor; never persist `bearer`. */
+    publishDescriptor(): Promise<SessionPublishDescriptor>;
   };
   ui: {
     openDeviceControl(): Promise<void>;

@@ -6,8 +6,9 @@ import { ReceiversView } from './views/Receivers';
 import { MultiviewView } from './views/Multiview';
 import { SettingsView } from './views/Settings';
 import { ControlView } from './views/Control';
+import { SessionView } from './views/Session';
 
-type Tab = 'encoders' | 'receivers' | 'multiview' | 'control' | 'settings';
+type Tab = 'session' | 'encoders' | 'receivers' | 'multiview' | 'control' | 'settings';
 
 interface UiState {
   tab: Tab;
@@ -17,13 +18,14 @@ interface UiState {
 }
 
 export const useUi = create<UiState>((set) => ({
-  tab: 'encoders',
+  tab: 'session',
   setTab: (tab) => set({ tab }),
   auth: { signedIn: false, subject: null, expiresInSec: null },
   setAuth: (auth) => set({ auth }),
 }));
 
 const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
+  { id: 'session', label: 'Session' },
   { id: 'encoders', label: 'Encoders' },
   { id: 'receivers', label: 'Receivers' },
   { id: 'multiview', label: 'Multiview' },
@@ -43,6 +45,7 @@ export function App(): React.JSX.Element {
       <TitleBar />
       <TabBar current={tab} onChange={setTab} />
       <main className="flex-1 overflow-auto p-6">
+        {tab === 'session' && <SessionView />}
         {tab === 'encoders' && <EncodersView />}
         {tab === 'receivers' && <ReceiversView />}
         {tab === 'multiview' && <MultiviewView />}
