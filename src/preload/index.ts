@@ -111,6 +111,10 @@ const wave = {
       return SessionPublishDescriptorSchema.parse(raw);
     },
   },
+  ui: {
+    /** Opens the web-always Mesh device-control page in the OS browser. */
+    openDeviceControl: (): Promise<void> => ipcRenderer.invoke(IPC.uiOpenDeviceControl),
+  },
 } as const;
 
 contextBridge.exposeInMainWorld('wave', wave);

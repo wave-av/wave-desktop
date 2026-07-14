@@ -33,6 +33,7 @@ import {
   type CrestResult,
   type SessionPublishDescriptor,
 } from '@shared/ipc';
+import { DEVICE_CONTROL_URL } from '@shared/urls';
 import { buildCrestEnvelope } from './control-plane/crest-envelope';
 import {
   OAuthError,
@@ -362,6 +363,14 @@ export function registerIpcHandlers(): void {
       return { endpoint: `${base}/v1/whip/publish`, bearer };
     },
   );
+
+  // ── deep-link: web-always Mesh device control (E-CONTROL #78b) ──────────
+  // Fixed constant, never renderer-supplied input — a compromised renderer
+  // can only ever trigger opening this ONE known-good WAVE URL, not an
+  // arbitrary shell.openExternal target.
+  ipcMain.handle(IPC.uiOpenDeviceControl, (): void => {
+    void shell.openExternal(DEVICE_CONTROL_URL);
+  });
 }
 
 async function postCrestControl(

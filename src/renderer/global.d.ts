@@ -56,6 +56,9 @@ interface WaveBridge {
     /** One-shot WHIP publish descriptor; never persist `bearer`. */
     publishDescriptor(): Promise<SessionPublishDescriptor>;
   };
+  ui: {
+    openDeviceControl(): Promise<void>;
+  };
 }
 
 declare global {

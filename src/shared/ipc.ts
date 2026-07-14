@@ -247,5 +247,6 @@ export const IPC = {
   crestState: 'wave:crest:state',
   /** one-shot WHIP publish descriptor (endpoint + bearer) for a realtime session */
   sessionPublishDescriptor: 'wave:session:publish-descriptor',
+  uiOpenDeviceControl: 'wave:ui:open-device-control',
 } as const;
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
