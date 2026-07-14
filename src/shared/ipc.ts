@@ -227,6 +227,30 @@ export const SessionPublishDescriptorSchema = z.object({
 });
 export type SessionPublishDescriptor = z.infer<typeof SessionPublishDescriptorSchema>;
 
+/**
+ * A minted, LEAST-PRIVILEGE WHIP publish token (#74.b, Jake dual-auth ruling
+ * 2026-07-14). Instead of handing the broad session JWT to the media route, main
+ * exchanges it at `POST {gatewayBase}/v1/oauth/token` for a short-lived token
+ * scoped to `whip:write` ONLY, and returns that. The renderer feeds `key`
+ * straight into `@wave-av/whip-publish`'s `publish()` (as the Bearer) and never
+ * persists it. `scope` is echoed for the UI to prove least-privilege; `key` is
+ * still a SECRET (same one-shot discipline as the descriptor bearer).
+ *
+ * ONLY surfaced when the encode-bridge feature flag is ON — with the flag off,
+ * `session.mintPublishToken()` rejects so no publish token is ever minted.
+ */
+export const SessionPublishTokenSchema = z.object({
+  /** Gateway WHIP publish endpoint (same derivation as the descriptor). */
+  endpoint: z.string().url(),
+  /** The short-lived `whip:write`-scoped Bearer token. SECRET — never persist. */
+  key: z.string().min(1),
+  /** Seconds until the minted token expires (server-stated). */
+  expiresInSec: z.number().int().positive(),
+  /** The granted scope string, e.g. `"whip:write"` — display/observability only. */
+  scope: z.string(),
+});
+export type SessionPublishToken = z.infer<typeof SessionPublishTokenSchema>;
+
 export const IPC = {
   authState: 'wave:auth:state',
   authSignIn: 'wave:auth:sign-in',
@@ -247,6 +271,8 @@ export const IPC = {
   crestState: 'wave:crest:state',
   /** one-shot WHIP publish descriptor (endpoint + bearer) for a realtime session */
   sessionPublishDescriptor: 'wave:session:publish-descriptor',
+  /** mint a least-privilege whip:write-scoped publish token (#74.b, flag-gated) */
+  sessionMintPublishToken: 'wave:session:mint-publish-token',
   uiOpenDeviceControl: 'wave:ui:open-device-control',
 } as const;
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

@@ -156,6 +156,96 @@ export async function refreshToken(
   return toTokenSet(tok);
 }
 
+// ── token exchange (least-privilege scoped mint — #74.b) ─────────────────────
+
+/** A minted, short-lived scoped token from `POST /v1/oauth/token` (JSON grant). */
+export interface ScopedToken {
+  accessToken: string;
+  expiresInSec: number;
+  scope: string;
+}
+
+interface RawExchangeResp {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  scope: string;
+}
+
+interface RawExchangeError {
+  error?: { code?: string; message?: string };
+}
+
+/**
+ * Exchange the caller's session bearer for a LEAST-PRIVILEGE scoped token.
+ *
+ * The WAVE gateway's `POST /v1/oauth/token` (token-exchange.ts) takes a JSON body
+ * `{ scopes?, ttl? }` and mints a short-lived token whose scopes are a SUBSET of
+ * the caller's grant (fail-closed on escalation). For #74.b the desktop requests
+ * exactly `["whip:write"]` so the token handed to the media route can do nothing
+ * else. The caller's session bearer authenticates the exchange.
+ *
+ * NOTE: this is the JSON grant (distinct from the RFC 8628 device-code form-POST
+ * to the same path). The gateway routes on Content-Type / grant_type.
+ *
+ * @throws OAuthError on any non-2xx (e.g. `SCOPE_OVERREACH` 403 if the session
+ * lacks `whip:write`), so the UI can surface the real reason.
+ */
+export async function exchangeScopedToken(
+  gatewayBase: string,
+  sessionBearer: string,
+  scopes: string[],
+  ttlSec?: number,
+  signal?: AbortSignal,
+): Promise<ScopedToken> {
+  const base = gatewayBase.replace(/\/$/, '');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const onOuterAbort = (): void => controller.abort();
+  signal?.addEventListener('abort', onOuterAbort, { once: true });
+  try {
+    const res = await fetch(`${base}/v1/oauth/token`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${sessionBearer}`,
+        'content-type': 'application/json',
+        accept: 'application/json',
+      },
+      body: JSON.stringify(ttlSec != null ? { scopes, ttl: ttlSec } : { scopes }),
+      signal: controller.signal,
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      let parsed: RawExchangeError | null = null;
+      try {
+        parsed = JSON.parse(text) as RawExchangeError;
+      } catch {
+        /* non-JSON */
+      }
+      const code = parsed?.error?.code ?? 'exchange_failed';
+      const msg = parsed?.error?.message ?? `token exchange http ${res.status}`;
+      throw new OAuthError(msg, code);
+    }
+    let raw: RawExchangeResp;
+    try {
+      raw = JSON.parse(text) as RawExchangeResp;
+    } catch {
+      throw new OAuthError('token exchange: response not JSON', 'malformed_response');
+    }
+    if (!raw.access_token) {
+      throw new OAuthError('token exchange: response missing access_token', 'malformed_response');
+    }
+    return {
+      accessToken: raw.access_token,
+      expiresInSec: raw.expires_in,
+      scope: raw.scope ?? scopes.join(' '),
+    };
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onOuterAbort);
+  }
+}
+
 // ── internals ───────────────────────────────────────────────────────────────
 
 function toTokenSet(raw: RawTokenResp): TokenSet {

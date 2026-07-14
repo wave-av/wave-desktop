@@ -14,12 +14,14 @@ import {
   ControlPlaneRevealResponseSchema,
   CrestResultSchema,
   SessionPublishDescriptorSchema,
+  SessionPublishTokenSchema,
   type AuthState,
   type ControlPlaneInfo,
   type ControlPlaneRevealResponse,
   type CrestCommand,
   type CrestResult,
   type SessionPublishDescriptor,
+  type SessionPublishToken,
   type EncoderStartRequest,
   type EncoderStatus,
   type NetworkInterface,
@@ -109,6 +111,15 @@ const wave = {
     publishDescriptor: async (): Promise<SessionPublishDescriptor> => {
       const raw = await ipcRenderer.invoke(IPC.sessionPublishDescriptor);
       return SessionPublishDescriptorSchema.parse(raw);
+    },
+    /**
+     * Mint a least-privilege `whip:write`-scoped publish token (#74.b). Flag-
+     * gated in main (rejects when the encode bridge is disabled). Hand `key`
+     * straight to publish(); never persist it.
+     */
+    mintPublishToken: async (): Promise<SessionPublishToken> => {
+      const raw = await ipcRenderer.invoke(IPC.sessionMintPublishToken);
+      return SessionPublishTokenSchema.parse(raw);
     },
   },
   ui: {
