@@ -18,6 +18,7 @@ import type {
   EncoderStatus,
   NetworkInterface,
   SessionPublishDescriptor,
+  SessionPublishToken,
   Settings,
   SignInEvent,
   SignInRequest,
@@ -55,6 +56,8 @@ interface WaveBridge {
   session: {
     /** One-shot WHIP publish descriptor; never persist `bearer`. */
     publishDescriptor(): Promise<SessionPublishDescriptor>;
+    /** Mint a least-privilege whip:write-scoped publish token (#74.b, flag-gated). */
+    mintPublishToken(): Promise<SessionPublishToken>;
   };
   ui: {
     openDeviceControl(): Promise<void>;

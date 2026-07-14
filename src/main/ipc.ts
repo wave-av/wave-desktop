@@ -32,13 +32,16 @@ import {
   CrestStateRequestSchema,
   type CrestResult,
   type SessionPublishDescriptor,
+  type SessionPublishToken,
 } from '@shared/ipc';
+import { isEncodeBridgeEnabled } from '@shared/flags';
 import { DEVICE_CONTROL_URL } from '@shared/urls';
 import { buildCrestEnvelope } from './control-plane/crest-envelope';
 import {
   OAuthError,
   refreshToken,
   startDeviceCode,
+  exchangeScopedToken,
   type TokenSet,
 } from './auth/oauth';
 import { clearToken, isAvailable, readToken, writeToken } from './auth/token-store';
@@ -361,6 +364,33 @@ export function registerIpcHandlers(): void {
       }
       const base = settings.gatewayBase.replace(/\/$/, '');
       return { endpoint: `${base}/v1/whip/publish`, bearer };
+    },
+  );
+
+  // ── realtime session: least-privilege publish token (#74.b) ───────────────
+  // Flag-gated (OFF by default). When enabled, exchange the stored session
+  // bearer for a SHORT-LIVED token scoped to `whip:write` ONLY, so the media
+  // route never carries the broad session JWT (Jake dual-auth ruling 2026-07-14).
+  // The scoped token is the SECRET the renderer hands straight to publish();
+  // it's never persisted. With the flag off we reject rather than mint.
+  ipcMain.handle(
+    IPC.sessionMintPublishToken,
+    async (): Promise<SessionPublishToken> => {
+      if (!isEncodeBridgeEnabled()) {
+        throw new Error('encode bridge disabled — set WAVE_ENABLE_ENCODE_BRIDGE to publish');
+      }
+      const bearer = await getAccessToken();
+      if (!bearer) {
+        throw new Error('not signed in — sign in with WAVE before joining a session');
+      }
+      const base = settings.gatewayBase.replace(/\/$/, '');
+      const scoped = await exchangeScopedToken(settings.gatewayBase, bearer, ['whip:write']);
+      return {
+        endpoint: `${base}/v1/whip/publish`,
+        key: scoped.accessToken,
+        expiresInSec: scoped.expiresInSec,
+        scope: scoped.scope,
+      };
     },
   );
 
