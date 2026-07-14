@@ -22,6 +22,9 @@
  * Kept free of any hard `@wave-av/whip-publish` import so it unit-tests without
  * the Encoded Transform API / a WebRTC polyfill: `publish()` is injected by the
  * caller (Session.tsx passes the real import).
+ *
+ * `MediaStreamTrackProcessor` (Insertable Streams) is Chromium-only and not in
+ * the DOM lib; its minimal type is declared in `webcodecs-dom.d.ts`.
  */
 
 /** Ranked video codec ladder — AV1 first, then HEVC, then H.264 (universal fallback). */
@@ -123,7 +126,7 @@ export function encodeVideoTrack(
   track: MediaStreamTrack,
   config: VideoEncodeConfig,
 ): ReadableStream<EncodedVideoChunk> {
-  const processor = new MediaStreamTrackProcessor({ track });
+  const processor = new MediaStreamTrackProcessor<VideoFrame>({ track });
   const reader = processor.readable.getReader();
   let encoder: VideoEncoder | null = null;
 
@@ -155,7 +158,7 @@ export function encodeAudioTrack(
   track: MediaStreamTrack,
   config: AudioEncodeConfig,
 ): ReadableStream<EncodedAudioChunk> {
-  const processor = new MediaStreamTrackProcessor({ track });
+  const processor = new MediaStreamTrackProcessor<AudioData>({ track });
   const reader = processor.readable.getReader();
   let encoder: AudioEncoder | null = null;
 

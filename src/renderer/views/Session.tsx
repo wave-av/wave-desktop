@@ -1,19 +1,24 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { publish } from '@wave-av/whip-publish';
+import { isEncodeBridgeEnabled } from '@shared/flags';
+import { startPublish, type StartPublishResult, type PublishFn } from '../session/publish-session';
 
 /**
- * Session view — the #74 "join a WAVE realtime session" happy-path stub.
+ * Session view — the #74 "join a WAVE realtime session" happy-path.
  *
- * Session core =
+ * Session core (#47) =
  *   1. Enumerate capture devices (navigator.mediaDevices — media lives ONLY in
  *      the renderer; it never crosses the IPC bridge).
- *   2. On "Publish", ask main for a one-shot WHIP descriptor (endpoint + bearer),
- *      capture the selected device via getUserMedia, and hand the encoded leg to
- *      @wave-av/whip-publish's `publish()` — the frozen WHIP-v1 client.
+ *   2. On "Publish", ask main for a WHIP target, capture the selected device,
+ *      and (when the encode bridge is enabled) drive the encoded leg into
+ *      @wave-av/whip-publish's `publish()`.
  *
- * INERT by design: this run stands up the wiring + UI. The WebCodecs encode
- * bridge (MediaStreamTrack → EncodedVideoChunk feed) is the next task (#74.b);
- * until then Publish resolves the descriptor + opens the capture stream and
- * reports readiness rather than pushing bytes, so nothing goes live by accident.
+ * #74.b encode bridge: gated behind `WAVE_ENABLE_ENCODE_BRIDGE` (default OFF).
+ *   - OFF (default): the original session-core behavior — resolve the descriptor,
+ *     open capture, report readiness, release the stream. Nothing publishes.
+ *   - ON: mint a least-privilege `whip:write` token, select codecs (AV1/Opus
+ *     preferred), encode the tracks via WebCodecs, and publish over WHIP. A
+ *     "Stop" button tears the live session down.
  */
 
 interface DeviceOpt {
@@ -22,7 +27,7 @@ interface DeviceOpt {
   kind: MediaDeviceKind;
 }
 
-type Phase = 'idle' | 'enumerating' | 'ready' | 'joining' | 'previewing' | 'error';
+type Phase = 'idle' | 'enumerating' | 'ready' | 'joining' | 'previewing' | 'live' | 'error';
 
 export function SessionView(): React.JSX.Element {
   const [devices, setDevices] = useState<DeviceOpt[]>([]);
@@ -30,6 +35,8 @@ export function SessionView(): React.JSX.Element {
   const [micId, setMicId] = useState<string>('');
   const [phase, setPhase] = useState<Phase>('idle');
   const [msg, setMsg] = useState<string>('');
+  const sessionRef = useRef<StartPublishResult | null>(null);
+  const bridgeEnabled = isEncodeBridgeEnabled();
 
   const enumerate = useCallback(async (): Promise<void> => {
     setPhase('enumerating');
@@ -61,37 +68,82 @@ export function SessionView(): React.JSX.Element {
     void enumerate();
   }, [enumerate]);
 
-  const publish = useCallback(async (): Promise<void> => {
+  const openCaptureStream = useCallback(async (): Promise<MediaStream> => {
+    return navigator.mediaDevices.getUserMedia({
+      video: camId ? { deviceId: { exact: camId } } : true,
+      audio: micId ? { deviceId: { exact: micId } } : true,
+    });
+  }, [camId, micId]);
+
+  // Flag OFF (session-core, #47): resolve the descriptor + open capture, report
+  // readiness, then RELEASE the stream so nothing publishes until the encode
+  // bridge is explicitly enabled.
+  const previewOnly = useCallback(async (): Promise<void> => {
+    const desc = await window.wave.session.publishDescriptor();
+    const stream = await openCaptureStream();
+    void desc.endpoint;
+    void desc.bearer;
+    stream.getTracks().forEach((t) => t.stop());
+    setPhase('previewing');
+    setMsg(
+      `Ready to publish to ${desc.endpoint} — capture opened, ${stream.getTracks().length} track(s). ` +
+        'Encode bridge disabled (set WAVE_ENABLE_ENCODE_BRIDGE to publish).',
+    );
+  }, [openCaptureStream]);
+
+  // Flag ON (#74.b): mint a least-privilege whip:write token, encode the tracks,
+  // and publish over WHIP. The minted token is handed straight to publish() as
+  // `key` and never persisted.
+  const publishLive = useCallback(async (): Promise<void> => {
+    const token = await window.wave.session.mintPublishToken();
+    const stream = await openCaptureStream();
+    const session = await startPublish(
+      stream,
+      { endpoint: token.endpoint, key: token.key },
+      { publish: publish as unknown as PublishFn, onState: (s) => setMsg(`WHIP: ${s}`) },
+    );
+    sessionRef.current = session;
+    setPhase('live');
+    setMsg(
+      `Publishing to ${token.endpoint} — video: ${session.videoCodec ?? 'none'}, ` +
+        `audio: ${session.audioCodec ?? 'none'} (scope: ${token.scope}).`,
+    );
+  }, [openCaptureStream]);
+
+  const publishAction = useCallback(async (): Promise<void> => {
     setPhase('joining');
-    setMsg('Requesting WHIP descriptor…');
+    setMsg(bridgeEnabled ? 'Minting publish token…' : 'Requesting WHIP descriptor…');
     try {
-      // Main owns the bearer + the frozen endpoint (api.wave.online/v1/whip/publish).
-      const desc = await window.wave.session.publishDescriptor();
-      // Open the selected capture devices (renderer-side only).
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: camId ? { deviceId: { exact: camId } } : true,
-        audio: micId ? { deviceId: { exact: micId } } : true,
-      });
-      // NEXT (#74.b): drive `stream`'s tracks through a WebCodecs encode leg and
-      // hand the EncodedVideo/AudioChunk feeds to publish(). For this session-core
-      // stub we prove the full control path (descriptor + capture) is live, then
-      // release the stream so nothing publishes until the encode bridge lands.
-      void desc.endpoint; // wired: publish target
-      void desc.bearer; // wired: Authorization bearer (never persisted)
-      stream.getTracks().forEach((t) => t.stop());
-      setPhase('previewing');
-      setMsg(
-        `Ready to publish to ${desc.endpoint} — capture opened, ${stream.getTracks().length} track(s). ` +
-          'Encode bridge (#74.b) pending.',
-      );
+      if (bridgeEnabled) await publishLive();
+      else await previewOnly();
     } catch (err) {
       setPhase('error');
       setMsg(err instanceof Error ? err.message : 'join failed');
     }
-  }, [camId, micId]);
+  }, [bridgeEnabled, publishLive, previewOnly]);
+
+  const stop = useCallback(async (): Promise<void> => {
+    const session = sessionRef.current;
+    sessionRef.current = null;
+    try {
+      await session?.stop();
+    } finally {
+      setPhase('ready');
+      setMsg('Session stopped.');
+    }
+  }, []);
+
+  // Ensure a live session is torn down if the view unmounts.
+  useEffect(() => {
+    return () => {
+      void sessionRef.current?.stop();
+      sessionRef.current = null;
+    };
+  }, []);
 
   const cams = devices.filter((d) => d.kind === 'videoinput');
   const mics = devices.filter((d) => d.kind === 'audioinput');
+  const isLive = phase === 'live';
 
   return (
     <section aria-label="Session" className="space-y-4">
@@ -99,7 +151,8 @@ export function SessionView(): React.JSX.Element {
       <p className="text-sm text-zinc-400">
         Join a WAVE realtime session: pick a camera + mic, then publish over WHIP to{' '}
         <code className="text-zinc-300">api.wave.online</code>. Media stays in this window; the
-        bearer key is minted per-session by the app and never persisted.
+        publish token is minted per-session (least-privilege <code>whip:write</code>) and never
+        persisted.
       </p>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -108,7 +161,8 @@ export function SessionView(): React.JSX.Element {
           <select
             value={camId}
             onChange={(e) => setCamId(e.target.value)}
-            className="min-h-11 rounded border border-zinc-700 bg-zinc-900 px-3 text-zinc-100"
+            disabled={isLive}
+            className="min-h-11 rounded border border-zinc-700 bg-zinc-900 px-3 text-zinc-100 disabled:opacity-40"
           >
             {cams.length === 0 && <option value="">No camera found</option>}
             {cams.map((d) => (
@@ -123,7 +177,8 @@ export function SessionView(): React.JSX.Element {
           <select
             value={micId}
             onChange={(e) => setMicId(e.target.value)}
-            className="min-h-11 rounded border border-zinc-700 bg-zinc-900 px-3 text-zinc-100"
+            disabled={isLive}
+            className="min-h-11 rounded border border-zinc-700 bg-zinc-900 px-3 text-zinc-100 disabled:opacity-40"
           >
             {mics.length === 0 && <option value="">No microphone found</option>}
             {mics.map((d) => (
@@ -136,18 +191,30 @@ export function SessionView(): React.JSX.Element {
       </div>
 
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => void publish()}
-          disabled={phase === 'joining' || phase === 'enumerating'}
-          className="min-h-11 min-w-32 rounded bg-[var(--wave-accent)] px-5 text-sm font-medium text-zinc-950 transition-opacity hover:opacity-90 disabled:opacity-40"
-        >
-          {phase === 'joining' ? 'Joining…' : 'Publish'}
-        </button>
+        {!isLive && (
+          <button
+            type="button"
+            onClick={() => void publishAction()}
+            disabled={phase === 'joining' || phase === 'enumerating'}
+            className="min-h-11 min-w-32 rounded bg-[var(--wave-accent)] px-5 text-sm font-medium text-zinc-950 transition-opacity hover:opacity-90 disabled:opacity-40"
+          >
+            {phase === 'joining' ? 'Joining…' : 'Publish'}
+          </button>
+        )}
+        {isLive && (
+          <button
+            type="button"
+            onClick={() => void stop()}
+            className="min-h-11 min-w-32 rounded bg-red-600 px-5 text-sm font-medium text-zinc-50 transition-opacity hover:opacity-90"
+          >
+            Stop
+          </button>
+        )}
         <button
           type="button"
           onClick={() => void enumerate()}
-          className="min-h-11 rounded border border-zinc-700 px-4 text-sm text-zinc-300 hover:text-zinc-100"
+          disabled={isLive}
+          className="min-h-11 rounded border border-zinc-700 px-4 text-sm text-zinc-300 hover:text-zinc-100 disabled:opacity-40"
         >
           Refresh devices
         </button>
