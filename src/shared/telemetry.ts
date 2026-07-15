@@ -14,7 +14,11 @@
 
 import { z } from 'zod';
 
-/** The lifecycle phase of a publish/subscribe session, for `state` events. */
+/**
+ * The transport a session uses (WHIP publish or WHEP subscribe). Referenced by
+ * every event kind below — required on `session-start` / `session-stop` /
+ * `state`, and optional on `error`.
+ */
 export const TelemetryTransportSchema = z.enum(['whip-publish', 'whep-subscribe']);
 export type TelemetryTransport = z.infer<typeof TelemetryTransportSchema>;
 

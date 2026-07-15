@@ -35,6 +35,8 @@ export type FetchFn = (
     method: string;
     headers: Record<string, string>;
     body?: string;
+    /** Abort signal so a stalled POST/DELETE can be cancelled on timeout. */
+    signal?: AbortSignal;
   },
 ) => Promise<{
   ok: boolean;
@@ -74,19 +76,46 @@ export interface WhepSession {
 
 const SDP_CONTENT_TYPE = 'application/sdp';
 
+/** How long a WHEP POST-subscribe / DELETE-teardown may stall before aborting. */
+const WHEP_FETCH_TIMEOUT_MS = 30_000;
+
 /**
  * Resolve the WHEP resource URL from the `Location` response header against the
  * subscribe endpoint's origin. The gateway rewrites Location to a gateway-
  * absolute path (`/v1/whep/resource/<id>`); a relative value is resolved against
- * the endpoint so DELETE targets the same gateway host. Returns null when the
- * header is absent (teardown then falls back to closing the pc only).
+ * the endpoint so DELETE targets the same gateway host.
+ *
+ * SAME-ORIGIN CONSTRAINT: `resourceUrl` is later used as the DELETE target
+ * carrying the scoped Bearer, so a malformed/hostile absolute `Location` at a
+ * DIFFERENT origin must never be honored (it would leak the token to an
+ * unintended host). Any cross-origin result is rejected → null. Returns null
+ * when the header is absent or invalid (teardown then closes the pc only).
  */
 export function resolveResourceUrl(endpoint: string, location: string | null): string | null {
   if (!location) return null;
   try {
-    return new URL(location, endpoint).toString();
+    const base = new URL(endpoint);
+    const resolved = new URL(location, base);
+    // Never follow a Location that points off the gateway origin.
+    if (resolved.origin !== base.origin) return null;
+    return resolved.toString();
   } catch {
     return null;
+  }
+}
+
+/** A `fetch` with an abort-on-timeout guard so a stalled hop can't hang forever. */
+async function fetchWithTimeout(
+  fetchImpl: FetchFn,
+  input: string,
+  init: { method: string; headers: Record<string, string>; body?: string },
+): Promise<Awaited<ReturnType<FetchFn>>> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), WHEP_FETCH_TIMEOUT_MS);
+  try {
+    return await fetchImpl(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -133,7 +162,7 @@ export async function startWhep(
   const offerSdp = pc.localDescription?.sdp ?? offer.sdp;
   if (!offerSdp) throw new Error('startWhep: local SDP offer was empty');
 
-  const res = await fetchImpl(target.endpoint, {
+  const res = await fetchWithTimeout(fetchImpl, target.endpoint, {
     method: 'POST',
     headers: {
       authorization: `Bearer ${target.key}`,
@@ -172,12 +201,12 @@ export async function startWhep(
       // pc from closing (the edge reaps orphaned sessions on ICE timeout).
       if (resourceUrl) {
         try {
-          await fetchImpl(resourceUrl, {
+          await fetchWithTimeout(fetchImpl, resourceUrl, {
             method: 'DELETE',
             headers: { authorization: `Bearer ${target.key}` },
           });
         } catch {
-          /* best-effort teardown */
+          /* best-effort teardown (incl. abort-on-timeout) */
         }
       }
       pc.close();

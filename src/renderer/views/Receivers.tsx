@@ -30,14 +30,21 @@ export function ReceiversView(): React.JSX.Element {
   const bridgeEnabled = isEncodeBridgeEnabled();
 
   const teardown = useCallback(async (reason: 'stopped' | 'error' | 'quit'): Promise<void> => {
+    // Capture + clear the refs up front so a re-entrant teardown (Stop then
+    // unmount, a double-click, or a failed watch() then unmount) is a no-op and
+    // never re-emits a phantom session-stop. The stop-emit is gated on an actual
+    // session having existed, not merely on `sid` being set.
     const session = sessionRef.current;
     sessionRef.current = null;
     const sid = sessionIdRef.current;
+    sessionIdRef.current = '';
     try {
       await session?.stop();
+    } catch {
+      /* best-effort teardown — a failed stop() must not throw out of unmount */
     } finally {
       if (videoRef.current) videoRef.current.srcObject = null;
-      if (sid) {
+      if (session && sid) {
         window.wave.telemetry.emit({
           kind: 'session-stop',
           session: sid,
@@ -56,7 +63,6 @@ export function ReceiversView(): React.JSX.Element {
     sessionIdRef.current = sid;
     try {
       const token = await window.wave.session.mintSubscribeToken();
-      window.wave.telemetry.emit({ kind: 'session-start', session: sid, transport: 'whep-subscribe' });
       startedAtRef.current = Date.now();
       const session = await startWhep(
         { endpoint: token.endpoint, key: token.key },
@@ -76,6 +82,11 @@ export function ReceiversView(): React.JSX.Element {
         },
       );
       sessionRef.current = session;
+      // Emit session-start only AFTER the handshake succeeds, so every
+      // session-start is bracketed by a session-stop. A failed subscribe (e.g.
+      // the 503 WHEP-unconfigured case) emits only an `error`, never a dangling
+      // start.
+      window.wave.telemetry.emit({ kind: 'session-start', session: sid, transport: 'whep-subscribe' });
       setPhase('playing');
       setMsg(`Playing (scope: ${token.scope}).`);
     } catch (err) {

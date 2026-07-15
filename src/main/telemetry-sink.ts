@@ -58,6 +58,13 @@ export function formatEvent(ev: TelemetryEvent): string {
     case 'error':
       parts.push(`code=${ev.code}`, `message=${JSON.stringify(ev.message)}`);
       break;
+    default: {
+      // Exhaustiveness guard: a new TelemetryEventSchema variant that isn't
+      // handled above becomes a compile-time error here, instead of silently
+      // dropping its kind-specific fields from the log line.
+      const _exhaustive: never = ev;
+      void _exhaustive;
+    }
   }
   return parts.join(' ');
 }

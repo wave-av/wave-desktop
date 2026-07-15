@@ -14,6 +14,7 @@ function fakePeer(overrides: Partial<WhepPeer> = {}): WhepPeer & {
   transceivers: Array<{ kind: string; direction: string }>;
   remote: RTCSessionDescriptionInit | null;
   closed: boolean;
+  connectionState: string;
   listeners: Record<string, (ev: unknown) => void>;
 } {
   const transceivers: Array<{ kind: string; direction: string }> = [];
@@ -22,6 +23,7 @@ function fakePeer(overrides: Partial<WhepPeer> = {}): WhepPeer & {
     transceivers,
     remote: null as RTCSessionDescriptionInit | null,
     closed: false,
+    connectionState: 'new',
     listeners,
     addTransceiver: (kind: string, init: { direction: RTCRtpTransceiverDirection }) => {
       transceivers.push({ kind, direction: init.direction });
@@ -62,10 +64,31 @@ describe('resolveResourceUrl', () => {
   it('returns null for a missing Location', () => {
     expect(resolveResourceUrl(ENDPOINT, null)).toBeNull();
   });
-  it('keeps an absolute gateway URL as-is', () => {
+  it('keeps an absolute same-origin gateway URL as-is', () => {
     expect(resolveResourceUrl(ENDPOINT, 'https://api.wave.online/v1/whep/resource/x')).toBe(
       'https://api.wave.online/v1/whep/resource/x',
     );
+  });
+  it('rejects a cross-origin Location (never leak the Bearer off-gateway)', () => {
+    expect(resolveResourceUrl(ENDPOINT, 'https://evil.example/v1/whep/resource/x')).toBeNull();
+  });
+});
+
+describe('startWhep — resource resolution honors same-origin', () => {
+  it('does not DELETE a cross-origin Location on teardown', async () => {
+    const peer = fakePeer();
+    const fetchImpl = fetchOk('https://evil.example/v1/whep/resource/x');
+    const session = await startWhep(
+      { endpoint: ENDPOINT, key: 'k' },
+      { createPeer: () => peer, fetchImpl },
+    );
+    expect(session.resourceUrl).toBeNull();
+    await session.stop();
+    const deletes = (fetchImpl as unknown as { mock: { calls: unknown[][] } }).mock.calls.filter(
+      (c) => (c[1] as { method: string }).method === 'DELETE',
+    );
+    expect(deletes).toHaveLength(0);
+    expect(peer.closed).toBe(true);
   });
 });
 
@@ -108,6 +131,18 @@ describe('startWhep — SDP handshake', () => {
     const stream = {} as MediaStream;
     peer.listeners['track']!({ streams: [stream] } as unknown);
     expect(onStream).toHaveBeenCalledWith(stream);
+  });
+
+  it('forwards connectionstatechange to onState with the peer connectionState', async () => {
+    const peer = fakePeer();
+    const onState = vi.fn();
+    await startWhep(
+      { endpoint: ENDPOINT, key: 'k' },
+      { createPeer: () => peer, fetchImpl: fetchOk(), onState },
+    );
+    peer.connectionState = 'connected';
+    peer.listeners['connectionstatechange']!(undefined);
+    expect(onState).toHaveBeenCalledWith('connected');
   });
 
   it('throws a WHEP-unconfigured message on 503 and closes the pc', async () => {

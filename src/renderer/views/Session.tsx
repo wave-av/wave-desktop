@@ -102,17 +102,27 @@ export function SessionView(): React.JSX.Element {
     sessionIdRef.current = sid;
     const token = await window.wave.session.mintPublishToken();
     const stream = await openCaptureStream();
-    const session = await startPublish(
-      stream,
-      { endpoint: token.endpoint, key: token.key },
-      {
-        publish: publish as unknown as PublishFn,
-        onState: (s) => {
-          window.wave.telemetry.emit({ kind: 'state', session: sid, transport: 'whip-publish', state: s });
-          setMsg(`WHIP: ${s}`);
+    let session: StartPublishResult;
+    try {
+      session = await startPublish(
+        stream,
+        { endpoint: token.endpoint, key: token.key },
+        {
+          publish: publish as unknown as PublishFn,
+          onState: (s) => {
+            window.wave.telemetry.emit({ kind: 'state', session: sid, transport: 'whip-publish', state: s });
+            setMsg(`WHIP: ${s}`);
+          },
         },
-      },
-    );
+      );
+    } catch (err) {
+      // startPublish owns track teardown only on its SUCCESS-path stop() handle;
+      // if it throws (codec probe / WHIP POST failure) the capture tracks it was
+      // handed stay live and the OS camera/mic indicator stays lit. Stop them
+      // here before the error propagates to publishAction's catch.
+      stream.getTracks().forEach((t) => t.stop());
+      throw err;
+    }
     sessionRef.current = session;
     startedAtRef.current = Date.now();
     window.wave.telemetry.emit({
@@ -152,13 +162,19 @@ export function SessionView(): React.JSX.Element {
   }, [bridgeEnabled, publishLive, previewOnly]);
 
   const stop = useCallback(async (): Promise<void> => {
+    // Capture + clear the refs up front so a re-entrant stop (double-click while
+    // the async stop() is in flight) is a no-op and never re-emits session-stop.
+    // The emit is gated on an actual session having existed.
     const session = sessionRef.current;
     sessionRef.current = null;
     const sid = sessionIdRef.current;
+    sessionIdRef.current = '';
     try {
       await session?.stop();
+    } catch {
+      /* best-effort — a failed stop() must not throw out of the Stop handler */
     } finally {
-      if (sid) {
+      if (session && sid) {
         window.wave.telemetry.emit({
           kind: 'session-stop',
           session: sid,
@@ -181,8 +197,11 @@ export function SessionView(): React.JSX.Element {
       const sid = sessionIdRef.current;
       const session = sessionRef.current;
       sessionRef.current = null;
+      sessionIdRef.current = '';
       if (session) {
-        void session.stop();
+        // Swallow a rejected stop() so it doesn't surface as an unhandled
+        // rejection during unmount.
+        void session.stop().catch(() => {});
         if (sid) {
           window.wave.telemetry.emit({
             kind: 'session-stop',
