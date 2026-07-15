@@ -19,6 +19,11 @@ vi.mock('electron', () => ({
     handle: (channel: string, fn: Handler) => {
       handlers.set(channel, fn);
     },
+    // #74.c telemetry uses the one-way `ipcMain.on` channel; the mock records it
+    // the same way so registerIpcHandlers() wires cleanly.
+    on: (channel: string, fn: Handler) => {
+      handlers.set(channel, fn);
+    },
   },
   BrowserWindow: { getAllWindows: () => [] },
 }));

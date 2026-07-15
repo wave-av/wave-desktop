@@ -19,6 +19,8 @@ import type {
   NetworkInterface,
   SessionPublishDescriptor,
   SessionPublishToken,
+  SessionSubscribeToken,
+  TelemetryEvent,
   Settings,
   SignInEvent,
   SignInRequest,
@@ -58,6 +60,12 @@ interface WaveBridge {
     publishDescriptor(): Promise<SessionPublishDescriptor>;
     /** Mint a least-privilege whip:write-scoped publish token (#74.b, flag-gated). */
     mintPublishToken(): Promise<SessionPublishToken>;
+    /** Mint a least-privilege whep:write-scoped subscribe token (#74.d, flag-gated). */
+    mintSubscribeToken(): Promise<SessionSubscribeToken>;
+  };
+  telemetry: {
+    /** Fire-and-forget structured session lifecycle event (#74.c). */
+    emit(event: TelemetryEvent): void;
   };
   ui: {
     openDeviceControl(): Promise<void>;

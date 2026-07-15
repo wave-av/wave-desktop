@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { publish } from '@wave-av/whip-publish';
 import { isEncodeBridgeEnabled } from '@shared/flags';
+import { newSessionId } from '@shared/telemetry';
 import { startPublish, type StartPublishResult, type PublishFn } from '../session/publish-session';
 
 /**
@@ -36,6 +37,8 @@ export function SessionView(): React.JSX.Element {
   const [phase, setPhase] = useState<Phase>('idle');
   const [msg, setMsg] = useState<string>('');
   const sessionRef = useRef<StartPublishResult | null>(null);
+  const sessionIdRef = useRef<string>('');
+  const startedAtRef = useRef<number>(0);
   const bridgeEnabled = isEncodeBridgeEnabled();
 
   const enumerate = useCallback(async (): Promise<void> => {
@@ -95,14 +98,30 @@ export function SessionView(): React.JSX.Element {
   // and publish over WHIP. The minted token is handed straight to publish() as
   // `key` and never persisted.
   const publishLive = useCallback(async (): Promise<void> => {
+    const sid = newSessionId();
+    sessionIdRef.current = sid;
     const token = await window.wave.session.mintPublishToken();
     const stream = await openCaptureStream();
     const session = await startPublish(
       stream,
       { endpoint: token.endpoint, key: token.key },
-      { publish: publish as unknown as PublishFn, onState: (s) => setMsg(`WHIP: ${s}`) },
+      {
+        publish: publish as unknown as PublishFn,
+        onState: (s) => {
+          window.wave.telemetry.emit({ kind: 'state', session: sid, transport: 'whip-publish', state: s });
+          setMsg(`WHIP: ${s}`);
+        },
+      },
     );
     sessionRef.current = session;
+    startedAtRef.current = Date.now();
+    window.wave.telemetry.emit({
+      kind: 'session-start',
+      session: sid,
+      transport: 'whip-publish',
+      videoCodec: session.videoCodec,
+      audioCodec: session.audioCodec,
+    });
     setPhase('live');
     setMsg(
       `Publishing to ${token.endpoint} — video: ${session.videoCodec ?? 'none'}, ` +
@@ -117,27 +136,63 @@ export function SessionView(): React.JSX.Element {
       if (bridgeEnabled) await publishLive();
       else await previewOnly();
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'join failed';
+      if (sessionIdRef.current) {
+        window.wave.telemetry.emit({
+          kind: 'error',
+          session: sessionIdRef.current,
+          transport: 'whip-publish',
+          code: 'whip_publish_failed',
+          message,
+        });
+      }
       setPhase('error');
-      setMsg(err instanceof Error ? err.message : 'join failed');
+      setMsg(message);
     }
   }, [bridgeEnabled, publishLive, previewOnly]);
 
   const stop = useCallback(async (): Promise<void> => {
     const session = sessionRef.current;
     sessionRef.current = null;
+    const sid = sessionIdRef.current;
     try {
       await session?.stop();
     } finally {
+      if (sid) {
+        window.wave.telemetry.emit({
+          kind: 'session-stop',
+          session: sid,
+          transport: 'whip-publish',
+          durationSec: startedAtRef.current ? Math.round((Date.now() - startedAtRef.current) / 1000) : 0,
+          reason: 'stopped',
+        });
+      }
       setPhase('ready');
       setMsg('Session stopped.');
     }
   }, []);
 
-  // Ensure a live session is torn down if the view unmounts.
+  // Ensure a live session is torn down if the view unmounts (tab switch / app
+  // quit closes the window → React unmounts → this fires). stop() closes the pc,
+  // stops the raw capture tracks, and tears down the WHIP publish; we also emit
+  // a `quit`-reason stop so the lifecycle is bracketed in telemetry.
   useEffect(() => {
     return () => {
-      void sessionRef.current?.stop();
+      const sid = sessionIdRef.current;
+      const session = sessionRef.current;
       sessionRef.current = null;
+      if (session) {
+        void session.stop();
+        if (sid) {
+          window.wave.telemetry.emit({
+            kind: 'session-stop',
+            session: sid,
+            transport: 'whip-publish',
+            durationSec: startedAtRef.current ? Math.round((Date.now() - startedAtRef.current) / 1000) : 0,
+            reason: 'quit',
+          });
+        }
+      }
     };
   }, []);
 

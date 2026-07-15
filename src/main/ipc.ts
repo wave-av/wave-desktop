@@ -33,7 +33,10 @@ import {
   type CrestResult,
   type SessionPublishDescriptor,
   type SessionPublishToken,
+  type SessionSubscribeToken,
+  TelemetryEventSchema,
 } from '@shared/ipc';
+import { record as recordTelemetry } from './telemetry-sink';
 import { isEncodeBridgeEnabled } from '@shared/flags';
 import { DEVICE_CONTROL_URL } from '@shared/urls';
 import { buildCrestEnvelope } from './control-plane/crest-envelope';
@@ -393,6 +396,42 @@ export function registerIpcHandlers(): void {
       };
     },
   );
+
+  // ── realtime session: least-privilege SUBSCRIBE token (#74.d WHEP) ────────
+  // The receive-side sibling of mintPublishToken. Same dual-auth mint flow,
+  // scoped to `whep:write` ONLY (every WHEP verb — POST subscribe / PATCH
+  // trickle / DELETE teardown — is a mutation on the gateway, so the read-only
+  // `whep:read` scope cannot open a subscribe). Flag-gated identically. The
+  // scoped token is the SECRET the renderer hands straight to startWhep().
+  ipcMain.handle(
+    IPC.sessionMintSubscribeToken,
+    async (): Promise<SessionSubscribeToken> => {
+      if (!isEncodeBridgeEnabled()) {
+        throw new Error('encode bridge disabled — set WAVE_ENABLE_ENCODE_BRIDGE to subscribe');
+      }
+      const bearer = await getAccessToken();
+      if (!bearer) {
+        throw new Error('not signed in — sign in with WAVE before subscribing to a session');
+      }
+      const base = settings.gatewayBase.replace(/\/$/, '');
+      const scoped = await exchangeScopedToken(settings.gatewayBase, bearer, ['whep:write']);
+      return {
+        endpoint: `${base}/v1/whep/subscribe`,
+        key: scoped.accessToken,
+        expiresInSec: scoped.expiresInSec,
+        scope: scoped.scope,
+      };
+    },
+  );
+
+  // ── telemetry (#74.c) ─────────────────────────────────────────────────────
+  // One-way renderer → main. Validate at the boundary (a compromised renderer
+  // can't push a malformed event into the sink) and drop silently on bad input
+  // rather than throwing — telemetry must never break the emitting call site.
+  ipcMain.on(IPC.telemetryEmit, (_e: IpcMainInvokeEvent, raw: unknown): void => {
+    const parsed = TelemetryEventSchema.safeParse(raw);
+    if (parsed.success) recordTelemetry(parsed.data);
+  });
 
   // ── deep-link: web-always Mesh device control (E-CONTROL #78b) ──────────
   // Fixed constant, never renderer-supplied input — a compromised renderer
