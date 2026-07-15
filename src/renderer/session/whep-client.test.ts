@@ -225,3 +225,50 @@ describe('startWhep — teardown', () => {
     expect(peer.closed).toBe(true);
   });
 });
+
+describe('startWhep — non-trickle ICE gathering', () => {
+  it('waits for gathering to complete before POSTing the offer', async () => {
+    let state = 'gathering';
+    const peer = fakePeer();
+    Object.defineProperty(peer, 'iceGatheringState', { configurable: true, get: () => state });
+    const fetchImpl = fetchOk();
+
+    const started = startWhep(
+      { endpoint: ENDPOINT, key: 'k' },
+      { createPeer: () => peer, fetchImpl },
+    );
+    // Flush createOffer + setLocalDescription; the handshake is now parked on gathering.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetchImpl).not.toHaveBeenCalled();
+
+    // Candidates gathered → offer may go out.
+    state = 'complete';
+    peer.listeners['icegatheringstatechange']!(undefined);
+    await started;
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('POSTs after the timeout even if gathering never completes', async () => {
+    vi.useFakeTimers();
+    const peer = fakePeer();
+    Object.defineProperty(peer, 'iceGatheringState', { configurable: true, get: () => 'gathering' });
+    const fetchImpl = fetchOk();
+
+    const started = startWhep(
+      { endpoint: ENDPOINT, key: 'k' },
+      { createPeer: () => peer, fetchImpl },
+    );
+    await vi.advanceTimersByTimeAsync(3_000);
+    await started;
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('does not wait when the peer is already gathered (mock/complete)', async () => {
+    const peer = fakePeer();
+    Object.defineProperty(peer, 'iceGatheringState', { configurable: true, get: () => 'complete' });
+    const fetchImpl = fetchOk();
+    await startWhep({ endpoint: ENDPOINT, key: 'k' }, { createPeer: () => peer, fetchImpl });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});

@@ -52,13 +52,21 @@ export interface WhepPeer {
   setLocalDescription(desc: RTCSessionDescriptionInit): Promise<void>;
   setRemoteDescription(desc: RTCSessionDescriptionInit): Promise<void>;
   readonly localDescription: { sdp?: string } | null;
+  /** Gathering state — drives the non-trickle wait. Absent on test mocks (→ no wait). */
+  readonly iceGatheringState?: RTCIceGatheringState;
   addEventListener(type: string, listener: (ev: unknown) => void): void;
   close(): void;
 }
 
 export interface StartWhepDeps {
-  /** Factory for the recvonly peer connection. Defaults to `new RTCPeerConnection()`. */
+  /** Factory for the recvonly peer connection. Defaults to `new RTCPeerConnection({ iceServers })`. */
   createPeer?: () => WhepPeer;
+  /**
+   * ICE servers for the default peer. Defaults to public STUN so a viewer behind
+   * NAT can discover its server-reflexive candidate. Inject WAVE's own TURN here
+   * for restrictive (symmetric-NAT / UDP-blocked) networks.
+   */
+  iceServers?: RTCIceServer[];
   /** HTTP transport. Defaults to the global `fetch`. */
   fetchImpl?: FetchFn;
   /** Called with the incoming `MediaStream` once a track arrives (attach to <video>). */
@@ -78,6 +86,24 @@ const SDP_CONTENT_TYPE = 'application/sdp';
 
 /** How long a WHEP POST-subscribe / DELETE-teardown may stall before aborting. */
 const WHEP_FETCH_TIMEOUT_MS = 30_000;
+
+/**
+ * Default STUN so a viewer behind NAT discovers its server-reflexive candidate —
+ * without it the offer carries only host (LAN) candidates and a cloud SFU on a
+ * different network has no path to send media. Injectable via
+ * `StartWhepDeps.iceServers` (swap in WAVE's own TURN for symmetric-NAT /
+ * UDP-blocked networks); this public-STUN default covers the common case.
+ */
+const DEFAULT_ICE_SERVERS: readonly RTCIceServer[] = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+];
+
+/**
+ * Bound on the pre-POST ICE-gathering wait. WHEP here is NON-trickle (a single
+ * POST), so the offer must carry its candidates — but a slow/hung STUN RTT must
+ * not stall playback forever, so on timeout we POST whatever gathered so far.
+ */
+const WHEP_ICE_GATHERING_TIMEOUT_MS = 3_000;
 
 /**
  * Resolve the WHEP resource URL from the `Location` response header against the
@@ -102,6 +128,30 @@ export function resolveResourceUrl(endpoint: string, location: string | null): s
   } catch {
     return null;
   }
+}
+
+/**
+ * Resolve once ICE gathering completes (so the non-trickle offer carries its
+ * candidates) or after `timeoutMs`, whichever comes first. Peers that report no
+ * gathering state — e.g. unit-test mocks — resolve immediately (no wait).
+ */
+function waitForIceGathering(pc: WhepPeer, timeoutMs: number): Promise<void> {
+  if (pc.iceGatheringState === undefined || pc.iceGatheringState === 'complete') {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    pc.addEventListener('icegatheringstatechange', () => {
+      if (pc.iceGatheringState === 'complete') finish();
+    });
+  });
 }
 
 /** A `fetch` with an abort-on-timeout guard so a stalled hop can't hang forever. */
@@ -137,7 +187,11 @@ export async function startWhep(
 ): Promise<WhepSession> {
   const fetchImpl = deps.fetchImpl ?? (globalThis.fetch as unknown as FetchFn);
   const createPeer =
-    deps.createPeer ?? (() => new RTCPeerConnection() as unknown as WhepPeer);
+    deps.createPeer ??
+    (() =>
+      new RTCPeerConnection({
+        iceServers: (deps.iceServers ?? DEFAULT_ICE_SERVERS) as RTCIceServer[],
+      }) as unknown as WhepPeer);
 
   const pc = createPeer();
   // recvonly: we only ever RECEIVE media on a WHEP subscribe.
@@ -159,6 +213,9 @@ export async function startWhep(
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
+  // WHEP here is non-trickle: the single POST must carry ICE candidates, so wait
+  // (bounded) for gathering to finish before reading the local SDP.
+  await waitForIceGathering(pc, WHEP_ICE_GATHERING_TIMEOUT_MS);
   const offerSdp = pc.localDescription?.sdp ?? offer.sdp;
   if (!offerSdp) throw new Error('startWhep: local SDP offer was empty');
 
