@@ -258,7 +258,7 @@ export type SessionPublishToken = z.infer<typeof SessionPublishTokenSchema>;
  * token scoped to `whep:write` ONLY, and returns it. The renderer feeds `key`
  * straight into the WHEP client's `startWhep()` (as the Bearer) and never
  * persists it. `whep:write` (not `whep:read`) because a WHEP subscribe is a
- * POST — every WHEP verb is a mutation on the gateway (see wave-gateway/whep.ts).
+ * POST — every WHEP verb is a mutation on the gateway (see the WAVE gateway's WHEP handler).
  *
  * ONLY surfaced when the encode-bridge flag is ON (same gate as the publish
  * token) — with the flag off, `session.mintSubscribeToken()` rejects.

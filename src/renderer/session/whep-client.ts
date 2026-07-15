@@ -11,7 +11,7 @@
  * The gateway is a REVERSE PROXY, not a token minter — the client talks ONLY to
  * `api.wave.online/v1/whep/*` (never an edge URL). The `Location` the gateway
  * returns is already rewritten to a gateway-absolute `/v1/whep/resource/<id>`
- * path (see wave-gateway/src/whep.ts `rewriteWhepLocation`), so PATCH-trickle /
+ * path (see the WAVE gateway's `rewriteWhepLocation` route helper), so PATCH-trickle /
  * DELETE-teardown stay on the metered control plane.
  *
  * Mirrors the publish side's conventions: `RTCPeerConnection` + `fetch` are
