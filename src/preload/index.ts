@@ -15,6 +15,9 @@ import {
   CrestResultSchema,
   SessionPublishDescriptorSchema,
   SessionPublishTokenSchema,
+  SessionSubscribeTokenSchema,
+  type SessionSubscribeToken,
+  type TelemetryEvent,
   type AuthState,
   type ControlPlaneInfo,
   type ControlPlaneRevealResponse,
@@ -120,6 +123,21 @@ const wave = {
     mintPublishToken: async (): Promise<SessionPublishToken> => {
       const raw = await ipcRenderer.invoke(IPC.sessionMintPublishToken);
       return SessionPublishTokenSchema.parse(raw);
+    },
+    /**
+     * Mint a least-privilege `whep:write`-scoped SUBSCRIBE token (#74.d). Flag-
+     * gated in main (rejects when the encode bridge is disabled). Hand `key`
+     * straight to the WHEP client's startWhep(); never persist it.
+     */
+    mintSubscribeToken: async (): Promise<SessionSubscribeToken> => {
+      const raw = await ipcRenderer.invoke(IPC.sessionMintSubscribeToken);
+      return SessionSubscribeTokenSchema.parse(raw);
+    },
+  },
+  telemetry: {
+    /** Fire-and-forget structured session lifecycle event (#74.c). One-way. */
+    emit: (event: TelemetryEvent): void => {
+      ipcRenderer.send(IPC.telemetryEmit, event);
     },
   },
   ui: {

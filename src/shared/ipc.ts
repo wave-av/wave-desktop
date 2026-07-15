@@ -251,6 +251,36 @@ export const SessionPublishTokenSchema = z.object({
 });
 export type SessionPublishToken = z.infer<typeof SessionPublishTokenSchema>;
 
+/**
+ * A minted, LEAST-PRIVILEGE WHEP subscribe token (#74.d). Mirrors the WHIP
+ * publish-token mint exactly (Jake dual-auth ruling 2026-07-14): main exchanges
+ * the session bearer at `POST {gatewayBase}/v1/oauth/token` for a short-lived
+ * token scoped to `whep:write` ONLY, and returns it. The renderer feeds `key`
+ * straight into the WHEP client's `startWhep()` (as the Bearer) and never
+ * persists it. `whep:write` (not `whep:read`) because a WHEP subscribe is a
+ * POST — every WHEP verb is a mutation on the gateway (see the WAVE gateway's WHEP handler).
+ *
+ * ONLY surfaced when the encode-bridge flag is ON (same gate as the publish
+ * token) — with the flag off, `session.mintSubscribeToken()` rejects.
+ */
+export const SessionSubscribeTokenSchema = z.object({
+  /** Gateway WHEP subscribe endpoint — `https://api.wave.online/v1/whep/subscribe`. */
+  endpoint: z.string().url(),
+  /** The short-lived `whep:write`-scoped Bearer token. SECRET — never persist. */
+  key: z.string().min(1),
+  /** Seconds until the minted token expires (server-stated). */
+  expiresInSec: z.number().int().positive(),
+  /** The granted scope string, e.g. `"whep:write"` — display/observability only. */
+  scope: z.string(),
+});
+export type SessionSubscribeToken = z.infer<typeof SessionSubscribeTokenSchema>;
+
+// ── telemetry (#74.c) ────────────────────────────────────────────────────────
+// The renderer emits structured session lifecycle events; main validates + sinks
+// them (telemetry-sink.ts). One-way (renderer → main, no response). The event
+// shape lives in @shared/telemetry so both sides share the schema.
+export { TelemetryEventSchema, type TelemetryEvent } from './telemetry';
+
 export const IPC = {
   authState: 'wave:auth:state',
   authSignIn: 'wave:auth:sign-in',
@@ -273,6 +303,10 @@ export const IPC = {
   sessionPublishDescriptor: 'wave:session:publish-descriptor',
   /** mint a least-privilege whip:write-scoped publish token (#74.b, flag-gated) */
   sessionMintPublishToken: 'wave:session:mint-publish-token',
+  /** mint a least-privilege whep:write-scoped subscribe token (#74.d, flag-gated) */
+  sessionMintSubscribeToken: 'wave:session:mint-subscribe-token',
+  /** renderer → main one-way structured telemetry event (#74.c) */
+  telemetryEmit: 'wave:telemetry:emit',
   uiOpenDeviceControl: 'wave:ui:open-device-control',
 } as const;
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
