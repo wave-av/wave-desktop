@@ -20,6 +20,7 @@ import type {
   SessionPublishDescriptor,
   SessionPublishToken,
   SessionSubscribeToken,
+  SessionSource,
   TelemetryEvent,
   Settings,
   SignInEvent,
@@ -62,6 +63,8 @@ interface WaveBridge {
     mintPublishToken(): Promise<SessionPublishToken>;
     /** Mint a least-privilege whep:write-scoped subscribe token (#74.d, flag-gated). */
     mintSubscribeToken(): Promise<SessionSubscribeToken>;
+    /** List this org's discoverable WHEP sources (WHEP-C, whep:read, flag-gated). [] when INERT. */
+    listSources(): Promise<SessionSource[]>;
   };
   telemetry: {
     /** Fire-and-forget structured session lifecycle event (#74.c). */

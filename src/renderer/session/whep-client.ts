@@ -131,6 +131,18 @@ export function resolveResourceUrl(endpoint: string, location: string | null): s
 }
 
 /**
+ * Bake the chosen source uid into the WHEP subscribe endpoint as `?resource=`
+ * (WHEP-C). The edge REQUIRES `?resource=<liveInputUid>` — a bare subscribe
+ * 400s — and the minted token endpoint carries no query string, so the resource
+ * is threaded in here. The uid is URL-encoded; an existing query (defensive —
+ * the mint endpoint has none today) is preserved with `&`.
+ */
+export function buildSubscribeEndpoint(endpoint: string, resource: string): string {
+  const sep = endpoint.includes('?') ? '&' : '?';
+  return `${endpoint}${sep}resource=${encodeURIComponent(resource)}`;
+}
+
+/**
  * Resolve once ICE gathering completes (so the non-trickle offer carries its
  * candidates) or after `timeoutMs`, whichever comes first. Peers that report no
  * gathering state — e.g. unit-test mocks — resolve immediately (no wait).

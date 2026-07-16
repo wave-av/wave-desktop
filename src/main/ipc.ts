@@ -34,6 +34,8 @@ import {
   type SessionPublishDescriptor,
   type SessionPublishToken,
   type SessionSubscribeToken,
+  type SessionSource,
+  SessionSourcesResponseSchema,
   TelemetryEventSchema,
 } from '@shared/ipc';
 import { record as recordTelemetry } from './telemetry-sink';
@@ -421,6 +423,44 @@ export function registerIpcHandlers(): void {
         expiresInSec: scoped.expiresInSec,
         scope: scoped.scope,
       };
+    },
+  );
+
+  // ── realtime session: discover this org's WHEP sources (WHEP-C) ───────────
+  // The receive-side picker's data source. A `whep:read` GET (least-privilege —
+  // read-only discovery, DISTINCT from the whep:write subscribe mint) to the
+  // gateway `/v1/whep/sources`, org-scoped by the gateway (a viewer only ever
+  // sees its OWN org's sources — tenant isolation §9.6). Flag-gated identically.
+  // 404/501 (edge INERT until INGRESS_ROUTER_ENABLED) degrade to an honest empty
+  // list; any OTHER non-2xx is a real error surfaced to the UI (no silent mask).
+  ipcMain.handle(
+    IPC.sessionListSources,
+    async (): Promise<SessionSource[]> => {
+      if (!isEncodeBridgeEnabled()) {
+        throw new Error('encode bridge disabled — set WAVE_ENABLE_ENCODE_BRIDGE to discover sources');
+      }
+      const bearer = await getAccessToken();
+      if (!bearer) {
+        throw new Error('not signed in — sign in with WAVE before discovering sources');
+      }
+      const base = settings.gatewayBase.replace(/\/$/, '');
+      const scoped = await exchangeScopedToken(settings.gatewayBase, bearer, ['whep:read']);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15_000);
+      try {
+        const res = await fetch(`${base}/v1/whep/sources`, {
+          method: 'GET',
+          headers: { authorization: `Bearer ${scoped.accessToken}`, accept: 'application/json' },
+          signal: controller.signal,
+        });
+        // Edge INERT (WHEP sources surface off) → honest empty, not an error.
+        if (res.status === 404 || res.status === 501) return [];
+        if (!res.ok) throw new Error(`source discovery failed (${res.status})`);
+        const parsed = SessionSourcesResponseSchema.safeParse(await res.json());
+        return parsed.success ? parsed.data.sources : [];
+      } finally {
+        clearTimeout(timer);
+      }
     },
   );
 

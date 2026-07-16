@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   startWhep,
   resolveResourceUrl,
+  buildSubscribeEndpoint,
   type FetchFn,
   type WhepPeer,
 } from './whep-client';
@@ -270,5 +271,23 @@ describe('startWhep — non-trickle ICE gathering', () => {
     const fetchImpl = fetchOk();
     await startWhep({ endpoint: ENDPOINT, key: 'k' }, { createPeer: () => peer, fetchImpl });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('buildSubscribeEndpoint (WHEP-C ?resource= threading)', () => {
+  const UID = '351cb3ff7d905fa4c6f61ba542f523bd';
+
+  it('appends ?resource= to a bare endpoint (the mint endpoint has no query)', () => {
+    expect(buildSubscribeEndpoint(ENDPOINT, UID)).toBe(`${ENDPOINT}?resource=${UID}`);
+  });
+
+  it('uses & when the endpoint already carries a query (defensive)', () => {
+    expect(buildSubscribeEndpoint(`${ENDPOINT}?x=1`, UID)).toBe(`${ENDPOINT}?x=1&resource=${UID}`);
+  });
+
+  it('URL-encodes the resource so a hostile uid cannot inject query params', () => {
+    expect(buildSubscribeEndpoint(ENDPOINT, 'a/b c&evil=1')).toBe(
+      `${ENDPOINT}?resource=a%2Fb%20c%26evil%3D1`,
+    );
   });
 });

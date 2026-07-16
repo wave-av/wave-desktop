@@ -17,6 +17,8 @@ import {
   SessionPublishTokenSchema,
   SessionSubscribeTokenSchema,
   type SessionSubscribeToken,
+  SessionSourcesResponseSchema,
+  type SessionSource,
   type TelemetryEvent,
   type AuthState,
   type ControlPlaneInfo,
@@ -132,6 +134,16 @@ const wave = {
     mintSubscribeToken: async (): Promise<SessionSubscribeToken> => {
       const raw = await ipcRenderer.invoke(IPC.sessionMintSubscribeToken);
       return SessionSubscribeTokenSchema.parse(raw);
+    },
+    /**
+     * List this org's discoverable WHEP sources (WHEP-C) via a `whep:read` GET
+     * to the gateway. Org-scoped by the gateway; flag-gated in main. Feed a
+     * chosen `uid` back as the subscribe `?resource=`. Returns [] when the edge
+     * source surface is INERT.
+     */
+    listSources: async (): Promise<SessionSource[]> => {
+      const raw = await ipcRenderer.invoke(IPC.sessionListSources);
+      return SessionSourcesResponseSchema.parse({ sources: raw }).sources;
     },
   },
   telemetry: {
