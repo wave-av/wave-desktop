@@ -275,6 +275,28 @@ export const SessionSubscribeTokenSchema = z.object({
 });
 export type SessionSubscribeToken = z.infer<typeof SessionSubscribeTokenSchema>;
 
+/**
+ * One discoverable WHEP source (#74.d / WHEP-C) — a CF Stream Live input this
+ * org may subscribe to. Returned by `GET {gatewayBase}/v1/whep/sources` (a
+ * `whep:read` read, org-scoped: a viewer only ever sees their OWN org's
+ * sources — tenant isolation §9.6). `uid` is the WHEP `?resource=` key the
+ * subscribe endpoint requires; `room` is the human label; `createdAt` epoch ms.
+ * Mirrors the edge's `OrgStreamInputEntry` (cf-stream-live-client.ts).
+ */
+export const SessionSourceSchema = z.object({
+  /** CF Stream live-input uid — 32 lowercase hex; the WHEP `?resource=` value. */
+  uid: z.string().regex(/^[0-9a-f]{32}$/),
+  /** Human room label the source was provisioned under. */
+  room: z.string(),
+  /** Epoch ms the source was provisioned. */
+  createdAt: z.number(),
+});
+export type SessionSource = z.infer<typeof SessionSourceSchema>;
+
+/** The `GET /v1/whep/sources` response envelope — `{ sources: [...] }`. */
+export const SessionSourcesResponseSchema = z.object({ sources: z.array(SessionSourceSchema) });
+export type SessionSourcesResponse = z.infer<typeof SessionSourcesResponseSchema>;
+
 // ── telemetry (#74.c) ────────────────────────────────────────────────────────
 // The renderer emits structured session lifecycle events; main validates + sinks
 // them (telemetry-sink.ts). One-way (renderer → main, no response). The event
@@ -305,6 +327,8 @@ export const IPC = {
   sessionMintPublishToken: 'wave:session:mint-publish-token',
   /** mint a least-privilege whep:write-scoped subscribe token (#74.d, flag-gated) */
   sessionMintSubscribeToken: 'wave:session:mint-subscribe-token',
+  /** list this org's WHEP sources — `whep:read` GET /v1/whep/sources (WHEP-C, flag-gated) */
+  sessionListSources: 'wave:session:list-sources',
   /** renderer → main one-way structured telemetry event (#74.c) */
   telemetryEmit: 'wave:telemetry:emit',
   uiOpenDeviceControl: 'wave:ui:open-device-control',
