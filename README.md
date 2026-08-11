@@ -20,7 +20,7 @@ workflow. Layer 0 of the [WAVE Protocol Plane][plane].
 |---|---|
 | **Encoders** | Pick a source (camera, screen, file, NDI receive, Dante receive, OBS scene) → pick a destination stream key → pick a codec (H.264 / HEVC / AV1 / AV2) → one-click live |
 | **Receivers** | Subscribe to any WAVE feed → render to a virtual NDI source, virtual webcam (visible to Zoom/Teams/Meet), local file, or on-screen preview |
-| **Multiview** | 4×4 / 9×9 / 16×16 grid with NDI + Dante audio meters. Click a tile to pin as program. Optional push to wave-realtime-edge as WebRTC |
+| **Multiview** | *(planned — W5)* 4×4 / 9×9 / 16×16 grid with NDI + Dante audio meters. Click a tile to pin as program. Optional push to wave-realtime-edge as WebRTC |
 | **Settings** | Gateway sign-in, default codec, preferred network interface, x402 budget cap |
 
 Auth, entitlement, and metering are handled by the WAVE platform
