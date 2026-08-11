@@ -4,8 +4,8 @@ Thanks for your interest. Read this in full before opening a PR.
 
 ## License
 
-Source is **MIT** (see `LICENSE`). By contributing you agree your contributions
-are also MIT-licensed.
+Source is **Apache-2.0** (see `LICENSE`). By contributing you agree your
+contributions are also Apache-2.0-licensed.
 
 ## License boundary — IMPORTANT
 
