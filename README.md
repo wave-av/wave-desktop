@@ -3,8 +3,11 @@
 **WAVE Operator Console** — desktop app for the first/last-mile of every WAVE
 workflow. Layer 0 of the [WAVE Protocol Plane][plane].
 
-> **Status: early / scaffolding.** Interfaces and scope will change. Watch the
-> releases + [CHANGELOG](./CHANGELOG.md).
+> **Status: working build, alpha.** The app runs — OAuth device-code sign-in,
+> safeStorage-backed token vault, SRT encoder lifecycle, WHEP subscribe +
+> WHIP publish sessions, and a loopback control-plane HTTP API (v0.3.0) are
+> all shipped and covered by a vitest suite. Interfaces still evolve. Watch
+> the [releases](https://github.com/wave-av/wave-desktop/releases) + [CHANGELOG](./CHANGELOG.md).
 
 > One app on every broadcast machine. Every signal on your LAN routes through
 > WAVE automatically — encoder, receiver, multiview, conferencing bridge.
@@ -24,9 +27,9 @@ Auth, entitlement, and metering are handled by the WAVE platform
 ## Why this exists
 
 Today, broadcast engineers manually configure SRT / NDI / RTMP and stitch
-their LAN packets to `api.wave.online`. After this app ships, they install
-one thing and everything on their LAN finds its way to WAVE — with codec
-choice, multiview, and conferencing-app virtual cameras built in.
+their LAN packets to `api.wave.online`. With this app, they install one thing
+and everything on their LAN finds its way to WAVE — with codec choice,
+multiview, and conferencing-app virtual cameras built in.
 
 It's also the **first** "Build on WAVE" app — built entirely on the public
 WAVE SDKs, demonstrating that every customer can build their own version.
@@ -89,13 +92,14 @@ machine under their own credentials. See `CONTRIBUTING.md` and `.gitignore`.
 
 | Wave | Surface | Status |
 |---|---|---|
-| W1 | This scaffold | shipped |
-| W2 | OAuth + safeStorage + first encoder (SRT) | next |
-| W3 | Receivers tab (virtual NDI + virtual webcam) | pending |
-| W4 | Multiview grid + WebRTC push | pending |
-| W5 | OBS plugin (#163, separate repo) | pending |
-| W6 | vMix integration (#164) | pending |
-| W7 | Zoom / Teams / Meet bridge (#166) | pending |
+| W1 | Shell + IPC contract + four-tab UI | shipped (0.2.0) |
+| W2 | OAuth device-code + safeStorage + SRT encoder | shipped |
+| W3 | WHEP subscribe + WHIP publish session surface | shipped |
+| W4 | Loopback control-plane HTTP API (Companion / vMix / multiviewer) | shipped (0.3.0) |
+| W5 | Multiview grid + WebRTC push | next |
+| W6 | OBS plugin (#163, separate repo) | pending |
+| W7 | vMix integration (#164) | pending |
+| W8 | Zoom / Teams / Meet bridge (#166) | pending |
 
 Full plan: `~/claude-hub/.claude/plans/wave-on-prem-layer/plan.md`.
 

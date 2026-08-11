@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **Public story corrected to match shipped state** — README status + roadmap now reflect reality: this is a working alpha, not a scaffold. OAuth device-code + safeStorage token vault, SRT encoder lifecycle, WHEP subscribe / WHIP publish sessions, and the loopback control-plane API (0.3.0) are all shipped and tested. Previously the README claimed "early / scaffolding" and marked OAuth + SRT encoder as Wave 2 "next". No code changed.
+
 ## [0.3.0] — control-plane HTTP API
 
 ### Added
