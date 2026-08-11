@@ -5,9 +5,11 @@ workflow. Layer 0 of the [WAVE Protocol Plane][plane].
 
 > **Status: working build, alpha.** The app runs — OAuth device-code sign-in,
 > safeStorage-backed token vault, SRT encoder lifecycle, WHEP subscribe +
-> WHIP publish sessions, and a loopback control-plane HTTP API (v0.3.0) are
-> all shipped and covered by a vitest suite. Interfaces still evolve. Watch
-> the [releases](https://github.com/wave-av/wave-desktop/releases) + [CHANGELOG](./CHANGELOG.md).
+> WHIP publish sessions (the encode→publish bridge is opt-in via the
+> `WAVE_ENABLE_ENCODE_BRIDGE` flag, default off), and a loopback
+> control-plane HTTP API (v0.3.0) are all shipped and covered by a vitest
+> suite. Interfaces still evolve. Watch the
+> [releases](https://github.com/wave-av/wave-desktop/releases) + [CHANGELOG](./CHANGELOG.md).
 
 > One app on every broadcast machine. Every signal on your LAN routes through
 > WAVE automatically — encoder, receiver, multiview, conferencing bridge.
@@ -110,6 +112,6 @@ Full plan: `~/claude-hub/.claude/plans/wave-on-prem-layer/plan.md`.
 
 ## License
 
-[MIT](./LICENSE) · Copyright © 2026 WAVE Online LLC.
+[Apache-2.0](./LICENSE) · Copyright © 2026 WAVE Online LLC.
 
 [plane]: https://github.com/wave-av/wave-foundation/blob/master/frameworks/protocol-plane/README.md
