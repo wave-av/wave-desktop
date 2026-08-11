@@ -6,7 +6,8 @@ workflow. Layer 0 of the [WAVE Protocol Plane][plane].
 > **Status: working build, alpha.** The app runs — OAuth device-code sign-in,
 > safeStorage-backed token vault, SRT encoder lifecycle, WHEP subscribe +
 > WHIP publish sessions (the encode→publish bridge is opt-in via the
-> `WAVE_ENABLE_ENCODE_BRIDGE` flag, default off), and a loopback
+> `WAVE_ENABLE_ENCODE_BRIDGE` flag, or `VITE_WAVE_ENABLE_ENCODE_BRIDGE` for
+> the renderer build; default off), and a loopback
 > control-plane HTTP API (v0.3.0) are all shipped and covered by a vitest
 > suite. Interfaces still evolve. Watch the
 > [releases](https://github.com/wave-av/wave-desktop/releases) + [CHANGELOG](./CHANGELOG.md).
