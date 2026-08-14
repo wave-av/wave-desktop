@@ -1,6 +1,8 @@
-# pr-agent (OSS) caller — adopts the wave-foundation reusable lane.
-# Engine: OSS Qodo Merge on our OPENAI_KEY (trial-independent). SSOT:
-# wave-foundation/.github/workflows/reusable-pr-agent.yml
+# pr-agent (OSS) caller — public-repo lane (vendored executable).
+# Engine: OSS Qodo Merge on our OPENAI_KEY (trial-independent).
+# wave-av/wave-foundation is PRIVATE; public callers cannot use its reusable workflows, so the
+# executable lane is vendored at ./.github/workflows/_pr-agent.yml (same pattern as
+# foundation-gate.yml → _checks.yml). Keep the two aligned with reusable-pr-agent.yml.
 name: pr-agent (OSS)
 on:
   pull_request:
@@ -14,11 +16,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: pr-agent-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
+  # Include event_name so issue_comment runs do not cancel an in-flight pull_request review
+  # (workflow concurrency is claimed before any job-level `if` can skip).
+  group: pr-agent-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   pr_agent:
-    uses: wave-av/wave-foundation/.github/workflows/reusable-pr-agent.yml@main
+    uses: ./.github/workflows/_pr-agent.yml
     secrets:
       OPENAI_KEY: ${{ secrets.OPENAI_KEY }}

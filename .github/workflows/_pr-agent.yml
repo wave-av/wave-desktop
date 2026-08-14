@@ -1,0 +1,40 @@
+# Vendored OSS pr-agent lane (mirrors wave-foundation reusable-pr-agent.yml).
+#
+# This repo is PUBLIC; wave-av/wave-foundation is PRIVATE, and GitHub Actions does NOT allow a
+# public repo to consume a private reusable workflow — same constraint as foundation-gate.yml /
+# _checks.yml. Keep this file aligned with wave-foundation/.github/workflows/reusable-pr-agent.yml.
+name: reusable-pr-agent
+
+on:
+  workflow_call:
+    secrets:
+      OPENAI_KEY:
+        required: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  pr_agent:
+    # Skip bots and plain-issue comments; concurrency still keys off the caller run, so callers
+    # must also separate pull_request vs issue_comment groups (see pr-agent.yml).
+    if: ${{ github.event.sender.type != 'Bot' && (github.event_name != 'issue_comment' || github.event.issue.pull_request) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    name: Run pr agent (OSS)
+    steps:
+      - name: PR Agent action step
+        id: pragent
+        uses: qodo-ai/pr-agent@20bc0fe8ae7c1494c0be580f7ceb35a1c45e5741 # main
+        env:
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          github_action_config.auto_review: "true"
+          github_action_config.auto_improve: "true"
+          github_action_config.pr_actions: '["opened", "reopened", "ready_for_review", "synchronize"]'
+          pr_code_suggestions.commitable_code_suggestions: "true"
