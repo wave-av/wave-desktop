@@ -88,8 +88,16 @@ export const EncoderSourceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('screen'), displayId: z.string() }),
   z.object({ kind: z.literal('camera'), deviceId: z.string() }),
   z.object({ kind: z.literal('file'), path: z.string() }),
-  z.object({ kind: z.literal('ndi'), sourceName: z.string() }),
-  z.object({ kind: z.literal('dante'), channelId: z.string() }),
+  // Pro-AV network transports. `sourceName` is the human-readable NDI/OMT
+  // source string ffmpeg matches against its discovery list — it may contain
+  // spaces and parentheses (e.g. `DEV-5 (Camera 1)`), so it never touches a
+  // shell: it's a single argv element handed straight to spawn().
+  z.object({ kind: z.literal('ndi'), sourceName: z.string().min(1) }),
+  z.object({ kind: z.literal('omt'), sourceName: z.string().min(1) }),
+  // Dante audio arrives as a CoreAudio (macOS) / WASAPI (Windows) / ALSA
+  // (Linux) device courtesy of Dante Virtual Soundcard; `deviceId` is the
+  // OS-specific device index or name that avfoundation/dshow/alsa expects.
+  z.object({ kind: z.literal('dante'), channelId: z.string().min(1) }),
 ]);
 export type EncoderSource = z.infer<typeof EncoderSourceSchema>;
 
@@ -134,6 +142,167 @@ export const ControlPlaneRevealResponseSchema = z.object({
 });
 export type ControlPlaneRevealResponse = z.infer<typeof ControlPlaneRevealResponseSchema>;
 
+// ── device control (E-CONTROL — WAVE Device Control Protocol v1) ────────────
+// Envelope + commands are FROZEN (see gateway `/v1/crest/control`). The
+// renderer never talks to the gateway directly — main holds the bearer
+// token and forwards. Outcomes (incl. 503 "not armed" / 403 / 400) are
+// surfaced verbatim to the renderer; we never synthesize success.
+
+export const CrestCommandSchema = z.discriminatedUnion('cmd', [
+  z.object({
+    cmd: z.literal('stream.start'),
+    args: z.object({
+      transport: z.enum(['moq', '2110']).optional(),
+      destination: z.string().optional(),
+    }),
+  }),
+  z.object({ cmd: z.literal('stream.stop'), args: z.object({}) }),
+  z.object({ cmd: z.literal('captions.on'), args: z.object({}) }),
+  z.object({ cmd: z.literal('captions.off'), args: z.object({}) }),
+  z.object({
+    cmd: z.literal('settings.set'),
+    args: z.object({
+      codec: z.enum(['h264', 'h265']).optional(),
+      bitrate: z.number().int().positive().optional(),
+      width: z.number().int().positive().optional(),
+      height: z.number().int().positive().optional(),
+      fps: z.number().int().min(1).max(240).optional(),
+      transport: z.enum(['moq', '2110']).optional(),
+      destination: z.string().optional(),
+    }),
+  }),
+  z.object({ cmd: z.literal('settings.get'), args: z.object({}) }),
+  z.object({ cmd: z.literal('state.get'), args: z.object({}) }),
+]);
+export type CrestCommand = z.infer<typeof CrestCommandSchema>;
+
+export const CrestControlRequestSchema = z.object({
+  org: z.string().min(1),
+  device: z.string().min(1),
+  command: CrestCommandSchema,
+});
+export type CrestControlRequest = z.infer<typeof CrestControlRequestSchema>;
+
+/**
+ * Outcome of a control POST / state GET. We never collapse a non-2xx into a
+ * thrown error the renderer has to string-match — `ok: false` carries the
+ * real HTTP status + gateway body so the UI can show e.g. "503 control
+ * bridge not armed" honestly instead of a generic failure toast.
+ */
+export const CrestResultSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true), status: z.number().int(), body: z.unknown() }),
+  z.object({ ok: z.literal(false), status: z.number().int(), body: z.unknown(), message: z.string() }),
+]);
+export type CrestResult = z.infer<typeof CrestResultSchema>;
+
+export const CrestStateRequestSchema = z.object({
+  org: z.string().min(1),
+  device: z.string().min(1),
+});
+export type CrestStateRequest = z.infer<typeof CrestStateRequestSchema>;
+
+// ── realtime session (WHIP publish — #74 session core) ──────────────────────
+// The happy-path "join a WAVE realtime session": the renderer enumerates
+// capture devices (navigator.mediaDevices — media MUST live renderer-side),
+// then asks main for a one-shot WHIP publish descriptor. Main owns the bearer
+// (the OAuth→JWT access token from safeStorage) and returns it alongside the
+// frozen WHIP endpoint. The bearer is a SECRET: the renderer hands it straight
+// to @wave-av/whip-publish's `publish()` and NEVER persists it (same one-shot
+// discipline as controlPlane.revealKey). Media never crosses the IPC bridge —
+// only this small descriptor does.
+
+export const SessionPublishDescriptorSchema = z.object({
+  /**
+   * The gateway WHIP publish endpoint — `https://api.wave.online/v1/whip/publish`.
+   * Derived from `settings.gatewayBase`; the client only ever talks to the gateway
+   * (frozen WHIP-v1 invariant §9.3), never an edge URL.
+   */
+  endpoint: z.string().url(),
+  /**
+   * `Authorization: Bearer <token>` value for the publish. SECRET — treat like
+   * revealKey(): hand to publish() immediately, never store in component state
+   * beyond the in-flight session.
+   */
+  bearer: z.string().min(1),
+});
+export type SessionPublishDescriptor = z.infer<typeof SessionPublishDescriptorSchema>;
+
+/**
+ * A minted, LEAST-PRIVILEGE WHIP publish token (#74.b, Jake dual-auth ruling
+ * 2026-07-14). Instead of handing the broad session JWT to the media route, main
+ * exchanges it at `POST {gatewayBase}/v1/oauth/token` for a short-lived token
+ * scoped to `whip:write` ONLY, and returns that. The renderer feeds `key`
+ * straight into `@wave-av/whip-publish`'s `publish()` (as the Bearer) and never
+ * persists it. `scope` is echoed for the UI to prove least-privilege; `key` is
+ * still a SECRET (same one-shot discipline as the descriptor bearer).
+ *
+ * ONLY surfaced when the encode-bridge feature flag is ON — with the flag off,
+ * `session.mintPublishToken()` rejects so no publish token is ever minted.
+ */
+export const SessionPublishTokenSchema = z.object({
+  /** Gateway WHIP publish endpoint (same derivation as the descriptor). */
+  endpoint: z.string().url(),
+  /** The short-lived `whip:write`-scoped Bearer token. SECRET — never persist. */
+  key: z.string().min(1),
+  /** Seconds until the minted token expires (server-stated). */
+  expiresInSec: z.number().int().positive(),
+  /** The granted scope string, e.g. `"whip:write"` — display/observability only. */
+  scope: z.string(),
+});
+export type SessionPublishToken = z.infer<typeof SessionPublishTokenSchema>;
+
+/**
+ * A minted, LEAST-PRIVILEGE WHEP subscribe token (#74.d). Mirrors the WHIP
+ * publish-token mint exactly (Jake dual-auth ruling 2026-07-14): main exchanges
+ * the session bearer at `POST {gatewayBase}/v1/oauth/token` for a short-lived
+ * token scoped to `whep:write` ONLY, and returns it. The renderer feeds `key`
+ * straight into the WHEP client's `startWhep()` (as the Bearer) and never
+ * persists it. `whep:write` (not `whep:read`) because a WHEP subscribe is a
+ * POST — every WHEP verb is a mutation on the gateway (see the WAVE gateway's WHEP handler).
+ *
+ * ONLY surfaced when the encode-bridge flag is ON (same gate as the publish
+ * token) — with the flag off, `session.mintSubscribeToken()` rejects.
+ */
+export const SessionSubscribeTokenSchema = z.object({
+  /** Gateway WHEP subscribe endpoint — `https://api.wave.online/v1/whep/subscribe`. */
+  endpoint: z.string().url(),
+  /** The short-lived `whep:write`-scoped Bearer token. SECRET — never persist. */
+  key: z.string().min(1),
+  /** Seconds until the minted token expires (server-stated). */
+  expiresInSec: z.number().int().positive(),
+  /** The granted scope string, e.g. `"whep:write"` — display/observability only. */
+  scope: z.string(),
+});
+export type SessionSubscribeToken = z.infer<typeof SessionSubscribeTokenSchema>;
+
+/**
+ * One discoverable WHEP source (#74.d / WHEP-C) — a CF Stream Live input this
+ * org may subscribe to. Returned by `GET {gatewayBase}/v1/whep/sources` (a
+ * `whep:read` read, org-scoped: a viewer only ever sees their OWN org's
+ * sources — tenant isolation §9.6). `uid` is the WHEP `?resource=` key the
+ * subscribe endpoint requires; `room` is the human label; `createdAt` epoch ms.
+ * Mirrors the edge's `OrgStreamInputEntry` (cf-stream-live-client.ts).
+ */
+export const SessionSourceSchema = z.object({
+  /** CF Stream live-input uid — 32 lowercase hex; the WHEP `?resource=` value. */
+  uid: z.string().regex(/^[0-9a-f]{32}$/),
+  /** Human room label the source was provisioned under. */
+  room: z.string(),
+  /** Epoch ms the source was provisioned. */
+  createdAt: z.number(),
+});
+export type SessionSource = z.infer<typeof SessionSourceSchema>;
+
+/** The `GET /v1/whep/sources` response envelope — `{ sources: [...] }`. */
+export const SessionSourcesResponseSchema = z.object({ sources: z.array(SessionSourceSchema) });
+export type SessionSourcesResponse = z.infer<typeof SessionSourcesResponseSchema>;
+
+// ── telemetry (#74.c) ────────────────────────────────────────────────────────
+// The renderer emits structured session lifecycle events; main validates + sinks
+// them (telemetry-sink.ts). One-way (renderer → main, no response). The event
+// shape lives in @shared/telemetry so both sides share the schema.
+export { TelemetryEventSchema, type TelemetryEvent } from './telemetry';
+
 export const IPC = {
   authState: 'wave:auth:state',
   authSignIn: 'wave:auth:sign-in',
@@ -150,5 +319,18 @@ export const IPC = {
   controlPlaneInfo: 'wave:control-plane:info',
   controlPlaneRevealKey: 'wave:control-plane:reveal-key',
   controlPlaneRegenerateKey: 'wave:control-plane:regenerate-key',
+  crestControl: 'wave:crest:control',
+  crestState: 'wave:crest:state',
+  /** one-shot WHIP publish descriptor (endpoint + bearer) for a realtime session */
+  sessionPublishDescriptor: 'wave:session:publish-descriptor',
+  /** mint a least-privilege whip:write-scoped publish token (#74.b, flag-gated) */
+  sessionMintPublishToken: 'wave:session:mint-publish-token',
+  /** mint a least-privilege whep:write-scoped subscribe token (#74.d, flag-gated) */
+  sessionMintSubscribeToken: 'wave:session:mint-subscribe-token',
+  /** list this org's WHEP sources — `whep:read` GET /v1/whep/sources (WHEP-C, flag-gated) */
+  sessionListSources: 'wave:session:list-sources',
+  /** renderer → main one-way structured telemetry event (#74.c) */
+  telemetryEmit: 'wave:telemetry:emit',
+  uiOpenDeviceControl: 'wave:ui:open-device-control',
 } as const;
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

@@ -62,13 +62,41 @@ describe('buildArgs', () => {
     expect(() => buildArgs(req({ codec: 'av2' }), target)).toThrow(/codec-watch/);
   });
 
-  it('rejects ndi / dante input (require a protocol bridge, not ffmpeg-native)', () => {
-    expect(() =>
-      buildArgs(req({ source: { kind: 'ndi', sourceName: 'cam1' } }), target),
-    ).toThrow(/protocol bridge/);
-    expect(() =>
-      buildArgs(req({ source: { kind: 'dante', channelId: 'd1' } }), target),
-    ).toThrow(/protocol bridge/);
+  it('builds an NDI input via the libndi_newtek device', () => {
+    const argv = buildArgs(req({ source: { kind: 'ndi', sourceName: 'DEV-5 (Camera 1)' } }), target);
+    const i = argv.indexOf('libndi_newtek');
+    expect(i).toBeGreaterThan(-1);
+    expect(argv[i - 1]).toBe('-f');
+    // Source name is one argv element — spaces/parens ride along untouched
+    // (no shell), so it must be present verbatim as its own token.
+    expect(argv[i + 1]).toBe('-i');
+    expect(argv[i + 2]).toBe('DEV-5 (Camera 1)');
+  });
+
+  it('builds an OMT input via the libomt device', () => {
+    const argv = buildArgs(req({ source: { kind: 'omt', sourceName: 'HOST (Feed A)' } }), target);
+    const i = argv.indexOf('libomt');
+    expect(i).toBeGreaterThan(-1);
+    expect(argv[i - 1]).toBe('-f');
+    expect(argv[i + 1]).toBe('-i');
+    expect(argv[i + 2]).toBe('HOST (Feed A)');
+  });
+
+  it('builds a Dante audio input via the current-OS audio device', () => {
+    const argv = buildArgs(req({ source: { kind: 'dante', channelId: '2' } }), target);
+    // Exactly one of the per-OS audio-capture formats must appear.
+    const hasAudioFormat =
+      argv.includes('avfoundation') || argv.includes('alsa') || argv.includes('dshow');
+    expect(hasAudioFormat).toBe(true);
+    expect(argv).toContain('-i');
+  });
+
+  it('never wraps NDI/OMT source names in quotes or splits on spaces (spawn is shell-free)', () => {
+    const argv = buildArgs(req({ source: { kind: 'ndi', sourceName: 'a b; rm -rf /' } }), target);
+    // The whole string is a single argv element — no shell metachar can bite.
+    expect(argv).toContain('a b; rm -rf /');
+    expect(argv).not.toContain('a');
+    expect(argv).not.toContain('"a b; rm -rf /"');
   });
 
   it('rejects an invalid SRT host (no shell injection via host string)', () => {

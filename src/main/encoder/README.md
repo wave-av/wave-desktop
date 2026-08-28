@@ -24,7 +24,7 @@ to N-API later if a real workload calls for it.
 | File | Role |
 |---|---|
 | `binary-resolver.ts` | Find ffmpeg on disk (env / `$PATH` / platform defaults) + probe for libsrt |
-| `srt-args.ts` | Build the ffmpeg argv — validates host/port/streamKey shape; refuses ndi/dante (needs a transport bridge) |
+| `srt-args.ts` | Build the ffmpeg argv — validates host/port/streamKey shape; maps every source kind (file/screen/camera/ndi/omt/dante) to its input device |
 | `stats-parser.ts` | Parse ffmpeg stderr progress lines (`frame=`, `bitrate=`, `time=`) into structured stats |
 | `lifecycle.ts` | `EncoderController` — spawn / track / stop child processes; surfaces progress + errors |
 
@@ -54,8 +54,9 @@ to N-API later if a real workload calls for it.
 | file | ✅ ready | `-re -i <path>` (real-time read) |
 | screen | ✅ ready | macOS `avfoundation`, Linux `x11grab`, Windows `gdigrab` |
 | camera | ✅ ready | macOS `avfoundation`, Linux `v4l2`, Windows `dshow` |
-| ndi | ⏳ deferred | Requires a transport protocol bridge (#157) |
-| dante | ⏳ deferred | Requires a transport DAL container (#159) |
+| ndi | ✅ ready | `-f libndi_newtek -i "<source name>"`. Needs an ffmpeg built with `--enable-libndi_newtek` (NDI SDK) — stock Homebrew/apt/Chocolatey lacks it. `binary-resolver.probeNdi()` gates start with a clear "install an NDI-enabled build" error. |
+| omt | ✅ ready | `-f libomt -i "<HOST (source)>"`. Open Media Transport (open NDI successor); landed in ffmpeg 7 via the OMT patch set. Needs `--enable-libomt` (GalleryUK/FFmpeg-OMT build) — `probeOmt()` gates start. |
+| dante | ✅ ready | Audio-only. Dante Virtual Soundcard exposes an OS audio device; captured per-OS: macOS `avfoundation -i :<idx>`, Linux `alsa`, Windows `dshow audio=`. No custom ffmpeg build required. |
 
 ## Wiring (follow-up task)
 

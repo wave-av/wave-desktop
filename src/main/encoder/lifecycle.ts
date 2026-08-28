@@ -37,6 +37,14 @@ export interface EncoderRecord {
 export interface SpawnOptions {
   /** Absolute path to the ffmpeg binary. */
   binary: string;
+  /**
+   * Input-device capabilities of the resolved ffmpeg build (from
+   * `binary-resolver.probe()`). Used to fail-fast with an actionable error
+   * for `ndi` / `omt` sources when the build lacks the device, instead of
+   * letting ffmpeg spawn and die mid-connect. Omit for source kinds that
+   * need no special build (file/screen/camera/dante).
+   */
+  capabilities?: { hasNdi: boolean; hasOmt: boolean };
   /** Encoder request from the renderer. */
   request: EncoderStartRequest;
   /** SRT target details (gateway host/port + stream key). */
@@ -52,11 +60,37 @@ export interface SpawnOptions {
  * through start/stop/list so the existing IPC handler can drop the
  * stub Map<id, EncoderStatus> and call us instead.
  */
+/**
+ * Fail-fast capability gate for pro-AV network sources. NDI and OMT need a
+ * custom ffmpeg build; if the resolved binary lacks the device we throw an
+ * actionable error here rather than spawning a process that dies mid-connect.
+ * File/screen/camera/dante need no special build and pass through.
+ */
+export function assertCapable(
+  request: EncoderStartRequest,
+  capabilities?: { hasNdi: boolean; hasOmt: boolean },
+): void {
+  const kind = request.source.kind;
+  if (kind === 'ndi' && capabilities && !capabilities.hasNdi) {
+    throw new Error(
+      'this ffmpeg build lacks NDI input (--enable-libndi_newtek); install an ' +
+        'NDI-SDK-enabled ffmpeg build and set WAVE_FFMPEG to it',
+    );
+  }
+  if (kind === 'omt' && capabilities && !capabilities.hasOmt) {
+    throw new Error(
+      'this ffmpeg build lacks OMT input (--enable-libomt); install an ' +
+        'OMT-enabled ffmpeg build (GalleryUK/FFmpeg-OMT) and set WAVE_FFMPEG to it',
+    );
+  }
+}
+
 export class EncoderController {
   private readonly records = new Map<string, EncoderRecord>();
 
   /** Spawn an encoder; resolves with the live id once the process has booted. */
   start(opts: SpawnOptions): EncoderRecord {
+    assertCapable(opts.request, opts.capabilities);
     const id = randomUUID();
     const args = buildArgs(opts.request, opts.target);
 

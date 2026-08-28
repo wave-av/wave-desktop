@@ -28,11 +28,25 @@ import {
   type NetworkInterface,
   type Settings,
   type SignInEvent,
+  CrestControlRequestSchema,
+  CrestStateRequestSchema,
+  type CrestResult,
+  type SessionPublishDescriptor,
+  type SessionPublishToken,
+  type SessionSubscribeToken,
+  type SessionSource,
+  SessionSourcesResponseSchema,
+  TelemetryEventSchema,
 } from '@shared/ipc';
+import { record as recordTelemetry } from './telemetry-sink';
+import { isEncodeBridgeEnabled } from '@shared/flags';
+import { DEVICE_CONTROL_URL } from '@shared/urls';
+import { buildCrestEnvelope } from './control-plane/crest-envelope';
 import {
   OAuthError,
   refreshToken,
   startDeviceCode,
+  exchangeScopedToken,
   type TokenSet,
 } from './auth/oauth';
 import { clearToken, isAvailable, readToken, writeToken } from './auth/token-store';
@@ -300,6 +314,239 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.encoderListStatus, (): EncoderStatus[] =>
     encoderController.list(),
   );
+
+  // ── device control (E-CONTROL) ──────────────────────────────────────────
+  // Renderer never holds the bearer token — main mints it via getAccessToken()
+  // and forwards the frozen envelope. Non-2xx (503 not-armed / 403 / 400) is
+  // returned as a structured `ok:false` result, never thrown as a generic
+  // error, so the UI can surface the real gateway outcome honestly.
+  ipcMain.handle(
+    IPC.crestControl,
+    async (_e: IpcMainInvokeEvent, raw: unknown): Promise<CrestResult> => {
+      const req = CrestControlRequestSchema.parse(raw);
+      const token = await getAccessToken();
+      if (!token) {
+        return {
+          ok: false,
+          status: 401,
+          body: null,
+          message: 'not signed in — sign in with WAVE first',
+        };
+      }
+      const envelope = buildCrestEnvelope(req.org, req.device, req.command);
+      return postCrestControl(settings.gatewayBase, token, envelope);
+    },
+  );
+
+  ipcMain.handle(
+    IPC.crestState,
+    async (_e: IpcMainInvokeEvent, raw: unknown): Promise<CrestResult> => {
+      const req = CrestStateRequestSchema.parse(raw);
+      const token = await getAccessToken();
+      if (!token) {
+        return {
+          ok: false,
+          status: 401,
+          body: null,
+          message: 'not signed in — sign in with WAVE first',
+        };
+      }
+      return getCrestState(settings.gatewayBase, token, req.org, req.device);
+    },
+  );
+
+  // ── realtime session (WHIP publish — #74) ─────────────────────────────────
+  // One-shot descriptor: the frozen WHIP endpoint + the current bearer. The
+  // renderer feeds this straight into @wave-av/whip-publish's publish(). We
+  // never persist the bearer here beyond the live token set, and it never
+  // touches disk on the renderer side (see SessionPublishDescriptorSchema doc).
+  ipcMain.handle(
+    IPC.sessionPublishDescriptor,
+    async (): Promise<SessionPublishDescriptor> => {
+      const bearer = await getAccessToken();
+      if (!bearer) {
+        throw new Error('not signed in — sign in with WAVE before joining a session');
+      }
+      const base = settings.gatewayBase.replace(/\/$/, '');
+      return { endpoint: `${base}/v1/whip/publish`, bearer };
+    },
+  );
+
+  // ── realtime session: least-privilege publish token (#74.b) ───────────────
+  // Flag-gated (OFF by default). When enabled, exchange the stored session
+  // bearer for a SHORT-LIVED token scoped to `whip:write` ONLY, so the media
+  // route never carries the broad session JWT (Jake dual-auth ruling 2026-07-14).
+  // The scoped token is the SECRET the renderer hands straight to publish();
+  // it's never persisted. With the flag off we reject rather than mint.
+  ipcMain.handle(
+    IPC.sessionMintPublishToken,
+    async (): Promise<SessionPublishToken> => {
+      if (!isEncodeBridgeEnabled()) {
+        throw new Error('encode bridge disabled — set WAVE_ENABLE_ENCODE_BRIDGE to publish');
+      }
+      const bearer = await getAccessToken();
+      if (!bearer) {
+        throw new Error('not signed in — sign in with WAVE before joining a session');
+      }
+      const base = settings.gatewayBase.replace(/\/$/, '');
+      const scoped = await exchangeScopedToken(settings.gatewayBase, bearer, ['whip:write']);
+      return {
+        endpoint: `${base}/v1/whip/publish`,
+        key: scoped.accessToken,
+        expiresInSec: scoped.expiresInSec,
+        scope: scoped.scope,
+      };
+    },
+  );
+
+  // ── realtime session: least-privilege SUBSCRIBE token (#74.d WHEP) ────────
+  // The receive-side sibling of mintPublishToken. Same dual-auth mint flow,
+  // scoped to `whep:write` ONLY (every WHEP verb — POST subscribe / PATCH
+  // trickle / DELETE teardown — is a mutation on the gateway, so the read-only
+  // `whep:read` scope cannot open a subscribe). Flag-gated identically. The
+  // scoped token is the SECRET the renderer hands straight to startWhep().
+  ipcMain.handle(
+    IPC.sessionMintSubscribeToken,
+    async (): Promise<SessionSubscribeToken> => {
+      if (!isEncodeBridgeEnabled()) {
+        throw new Error('encode bridge disabled — set WAVE_ENABLE_ENCODE_BRIDGE to subscribe');
+      }
+      const bearer = await getAccessToken();
+      if (!bearer) {
+        throw new Error('not signed in — sign in with WAVE before subscribing to a session');
+      }
+      const base = settings.gatewayBase.replace(/\/$/, '');
+      const scoped = await exchangeScopedToken(settings.gatewayBase, bearer, ['whep:write']);
+      return {
+        endpoint: `${base}/v1/whep/subscribe`,
+        key: scoped.accessToken,
+        expiresInSec: scoped.expiresInSec,
+        scope: scoped.scope,
+      };
+    },
+  );
+
+  // ── realtime session: discover this org's WHEP sources (WHEP-C) ───────────
+  // The receive-side picker's data source. A `whep:read` GET (least-privilege —
+  // read-only discovery, DISTINCT from the whep:write subscribe mint) to the
+  // gateway `/v1/whep/sources`, org-scoped by the gateway (a viewer only ever
+  // sees its OWN org's sources — tenant isolation §9.6). Flag-gated identically.
+  // 404/501 (edge INERT until INGRESS_ROUTER_ENABLED) degrade to an honest empty
+  // list; any OTHER non-2xx is a real error surfaced to the UI (no silent mask).
+  ipcMain.handle(
+    IPC.sessionListSources,
+    async (): Promise<SessionSource[]> => {
+      if (!isEncodeBridgeEnabled()) {
+        throw new Error('encode bridge disabled — set WAVE_ENABLE_ENCODE_BRIDGE to discover sources');
+      }
+      const bearer = await getAccessToken();
+      if (!bearer) {
+        throw new Error('not signed in — sign in with WAVE before discovering sources');
+      }
+      const base = settings.gatewayBase.replace(/\/$/, '');
+      const scoped = await exchangeScopedToken(settings.gatewayBase, bearer, ['whep:read']);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15_000);
+      try {
+        const res = await fetch(`${base}/v1/whep/sources`, {
+          method: 'GET',
+          headers: { authorization: `Bearer ${scoped.accessToken}`, accept: 'application/json' },
+          signal: controller.signal,
+        });
+        // Edge INERT (WHEP sources surface off) → honest empty, not an error.
+        if (res.status === 404 || res.status === 501) return [];
+        if (!res.ok) throw new Error(`source discovery failed (${res.status})`);
+        const parsed = SessionSourcesResponseSchema.safeParse(await res.json());
+        return parsed.success ? parsed.data.sources : [];
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+  );
+
+  // ── telemetry (#74.c) ─────────────────────────────────────────────────────
+  // One-way renderer → main. Validate at the boundary (a compromised renderer
+  // can't push a malformed event into the sink) and drop silently on bad input
+  // rather than throwing — telemetry must never break the emitting call site.
+  ipcMain.on(IPC.telemetryEmit, (_e: IpcMainInvokeEvent, raw: unknown): void => {
+    const parsed = TelemetryEventSchema.safeParse(raw);
+    if (parsed.success) recordTelemetry(parsed.data);
+  });
+
+  // ── deep-link: web-always Mesh device control (E-CONTROL #78b) ──────────
+  // Fixed constant, never renderer-supplied input — a compromised renderer
+  // can only ever trigger opening this ONE known-good WAVE URL, not an
+  // arbitrary shell.openExternal target.
+  ipcMain.handle(IPC.uiOpenDeviceControl, (): void => {
+    void shell.openExternal(DEVICE_CONTROL_URL);
+  });
+}
+
+async function postCrestControl(
+  gatewayBase: string,
+  token: string,
+  envelope: ReturnType<typeof buildCrestEnvelope>,
+): Promise<CrestResult> {
+  try {
+    const res = await fetch(`${gatewayBase}/v1/crest/control`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(envelope),
+    });
+    const body = await safeJson(res);
+    if (res.ok) return { ok: true, status: res.status, body };
+    return { ok: false, status: res.status, body, message: messageFor(res.status, body) };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      body: null,
+      message: err instanceof Error ? err.message : 'network error contacting gateway',
+    };
+  }
+}
+
+async function getCrestState(
+  gatewayBase: string,
+  token: string,
+  org: string,
+  device: string,
+): Promise<CrestResult> {
+  try {
+    const url = new URL(`${gatewayBase}/v1/crest/state`);
+    url.searchParams.set('device', device);
+    url.searchParams.set('org', org);
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const body = await safeJson(res);
+    if (res.ok) return { ok: true, status: res.status, body };
+    return { ok: false, status: res.status, body, message: messageFor(res.status, body) };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      body: null,
+      message: err instanceof Error ? err.message : 'network error contacting gateway',
+    };
+  }
+}
+
+async function safeJson(res: Response): Promise<unknown> {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+function messageFor(status: number, body: unknown): string {
+  const detail =
+    body && typeof body === 'object' && 'error' in body && typeof (body as { error: unknown }).error === 'string'
+      ? (body as { error: string }).error
+      : null;
+  if (status === 503) return detail ?? 'control bridge not armed';
+  if (status === 403) return detail ?? 'forbidden — cross-org device';
+  if (status === 400) return detail ?? 'malformed request';
+  return detail ?? `gateway returned ${status}`;
 }
 
 // Re-export for tests that exercise the JWT helpers without booting Electron.

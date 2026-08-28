@@ -37,9 +37,17 @@ export interface SrtTarget {
  * - screen → `-f avfoundation -i 1` (macOS) / similar per-OS device names
  * - camera → `-f avfoundation -i <id>`
  * - file → `-i <path>`
- * - ndi / dante → not yet supported by ffmpeg upstream without external libs;
- *   we throw so the caller surfaces a clear error rather than passing garbage
- *   to spawn.
+ * - ndi → `-f libndi_newtek -i "<source name>"` (needs a build with
+ *   `--enable-libndi_newtek`; capability-probed in binary-resolver so the
+ *   caller surfaces a clear "install an NDI-enabled ffmpeg" error).
+ * - omt → `-f libomt -i "<HOST (source)>"` (Open Media Transport, the open
+ *   NDI successor; needs `--enable-libomt`, probed the same way).
+ * - dante → Dante Virtual Soundcard presents an OS audio device; we capture
+ *   it per-OS (avfoundation / dshow / alsa). Audio-only.
+ *
+ * The NDI/OMT source name and Dante device id can contain spaces/parentheses;
+ * they're each a single argv element handed to spawn() with no shell, so
+ * there's nothing to escape — the string cannot break out of its argument.
  */
 function inputArgs(source: EncoderSource): string[] {
   switch (source.kind) {
@@ -68,10 +76,29 @@ function inputArgs(source: EncoderSource): string[] {
       }
       throw new Error(`camera capture not supported on ${process.platform}`);
     case 'ndi':
+      // NewTek NDI input device. The filename is the discovery source name
+      // (`ffmpeg -f libndi_newtek -find_sources 1 -i dummy` lists them).
+      // Cross-platform — the SDK ships for macOS/Linux/Windows.
+      return ['-f', 'libndi_newtek', '-i', source.sourceName];
+    case 'omt':
+      // Open Media Transport input device (ffmpeg 7 + libomt patch set,
+      // GalleryUK/FFmpeg-OMT). Filename is the full OMT source, typically
+      // `HOST (sourcename)`. Cross-platform like NDI.
+      return ['-f', 'libomt', '-i', source.sourceName];
     case 'dante':
-      throw new Error(
-        `${source.kind} input requires an SRT/RTMP protocol bridge (not ffmpeg-native); see task #157`,
-      );
+      // Dante Virtual Soundcard exposes the Dante channels as a standard OS
+      // audio device; we capture that device. Audio-only source (`:` prefix
+      // on avfoundation selects "no video, audio device N").
+      if (process.platform === 'darwin') {
+        return ['-f', 'avfoundation', '-i', `:${source.channelId}`];
+      }
+      if (process.platform === 'linux') {
+        return ['-f', 'alsa', '-i', source.channelId];
+      }
+      if (process.platform === 'win32') {
+        return ['-f', 'dshow', '-i', `audio=${source.channelId}`];
+      }
+      throw new Error(`dante capture not supported on ${process.platform}`);
   }
 }
 

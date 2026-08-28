@@ -17,9 +17,12 @@
  * no binary is found rather than crashing on spawn ENOENT.
  *
  * After resolving the path, we run `ffmpeg -version` once and parse the
- * output for libsrt presence so the operator sees an actionable error
- * ("your ffmpeg lacks --enable-libsrt") instead of a generic spawn failure
- * mid-stream.
+ * output for the input/output libraries we depend on (`libsrt` for the push,
+ * `libndi_newtek` for NDI capture, `libomt` for Open Media Transport capture)
+ * so the operator sees an actionable error ("your ffmpeg lacks
+ * --enable-libndi_newtek") instead of a generic spawn failure mid-stream.
+ * Stock Homebrew/apt/Chocolatey ffmpeg carries libsrt but NOT the NDI/OMT
+ * devices — those need an SDK-enabled custom build.
  */
 
 import { execFile } from 'node:child_process';
@@ -50,6 +53,19 @@ export interface ResolvedBinary {
   version: string;
   /** True iff `ffmpeg -version` mentions `--enable-libsrt`. */
   hasLibsrt: boolean;
+  /**
+   * True iff the build has the NewTek NDI input device
+   * (`--enable-libndi_newtek`). Stock Homebrew/apt/Chocolatey ffmpeg lacks
+   * it — the operator needs an NDI-SDK-enabled build for `kind: 'ndi'`.
+   */
+  hasNdi: boolean;
+  /**
+   * True iff the build has the Open Media Transport input device
+   * (`--enable-libomt`). Landed in ffmpeg 7 via the OMT patch set; not in
+   * any stock package yet — needs the GalleryUK/FFmpeg-OMT build for
+   * `kind: 'omt'`.
+   */
+  hasOmt: boolean;
 }
 
 export async function pathOnDisk(p: string): Promise<boolean> {
@@ -94,15 +110,35 @@ export async function resolvePath(): Promise<string | null> {
 export function parseVersionOutput(stdout: string): {
   version: string;
   hasLibsrt: boolean;
+  hasNdi: boolean;
+  hasOmt: boolean;
 } {
   // First line looks like: "ffmpeg version 7.1.1 Copyright (c) ..."
   const versionLine = stdout.split('\n')[0] ?? '';
   const versionMatch = versionLine.match(/version\s+(\S+)/);
   const version = versionMatch?.[1] ?? 'unknown';
-  // The configuration line contains `--enable-libsrt` if the build has it.
-  // We match anywhere in the output since config may wrap across lines.
-  const hasLibsrt = /--enable-libsrt\b/.test(stdout);
-  return { version, hasLibsrt };
+  return {
+    version,
+    // The configuration line contains the `--enable-<lib>` flag if the build
+    // has it. We match anywhere in the output since config may wrap across
+    // lines, and anchor on `--enable-` so a bare mention of the lib name in a
+    // comment doesn't false-positive.
+    hasLibsrt: hasConfigFlag(stdout, 'libsrt'),
+    hasNdi: hasConfigFlag(stdout, 'libndi_newtek'),
+    hasOmt: hasConfigFlag(stdout, 'libomt'),
+  };
+}
+
+/**
+ * True iff `ffmpeg -version` was configured with `--enable-<lib>`. Matches the
+ * flag itself (optionally a `-suffix`ed variant like `--enable-libsrt-static`),
+ * never a bare mention of the lib name in prose. Exported for reuse/testing.
+ */
+export function hasConfigFlag(stdout: string, lib: string): boolean {
+  // Escape regex metacharacters in the lib token defensively; our callers pass
+  // literals today but this keeps the helper safe if that ever changes.
+  const escaped = lib.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`--enable-${escaped}\\b`).test(stdout);
 }
 
 export async function probe(path: string): Promise<ResolvedBinary | null> {
@@ -111,8 +147,8 @@ export async function probe(path: string): Promise<ResolvedBinary | null> {
       timeout: 5_000,
       maxBuffer: 256 * 1024,
     });
-    const { version, hasLibsrt } = parseVersionOutput(stdout);
-    return { path, version, hasLibsrt };
+    const { version, hasLibsrt, hasNdi, hasOmt } = parseVersionOutput(stdout);
+    return { path, version, hasLibsrt, hasNdi, hasOmt };
   } catch {
     return null;
   }
@@ -126,4 +162,24 @@ export async function resolve(): Promise<ResolvedBinary | null> {
   const p = await resolvePath();
   if (!p) return null;
   return probe(p);
+}
+
+/**
+ * Capability probes for the pro-AV network sources. Each returns:
+ *   - true  → the resolved ffmpeg has the input device; capture can proceed
+ *   - false → ffmpeg is present but lacks the device (surface an install hint)
+ *   - null  → no usable ffmpeg at all (surface the missing-binary error first)
+ *
+ * Callers gate the `ndi` / `omt` encoder start on these so the operator gets
+ * "install an NDI-enabled ffmpeg build" rather than a mid-stream spawn error.
+ * Mirrors how the SRT path relies on `resolve().hasLibsrt`.
+ */
+export async function probeNdi(): Promise<boolean | null> {
+  const bin = await resolve();
+  return bin ? bin.hasNdi : null;
+}
+
+export async function probeOmt(): Promise<boolean | null> {
+  const bin = await resolve();
+  return bin ? bin.hasOmt : null;
 }
