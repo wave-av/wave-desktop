@@ -1,7 +1,7 @@
 {
   "name": "wave-desktop",
   "version": "0.3.0",
-  "description": "WAVE Operator Console — Electron desktop app for first/last-mile WAVE workflows",
+  "description": "WAVE Operator Console \u2014 Electron desktop app for first/last-mile WAVE workflows",
   "main": "./out/main/index.js",
   "private": true,
   "license": "Apache-2.0",
@@ -48,7 +48,7 @@
     "electron": "^39.8.10",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
-    "eslint": "^9.39.4",
+    "eslint": "^10.0.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "tailwindcss": "^4.3.0",
     "typescript": "^5.9.3",
@@ -59,7 +59,7 @@
   "build": {
     "appId": "online.wave.desktop",
     "productName": "WAVE",
-    "copyright": "Copyright © 2026 WAVE Online LLC",
+    "copyright": "Copyright \u00a9 2026 WAVE Online LLC",
     "files": [
       "out/**/*",
       "package.json"
