@@ -49,7 +49,7 @@ patterns under `resources/` for the deny-list and `CONTRIBUTING.md` §
 version: "0.1"
 secrets:
   - name: SENTRY_AUTH_TOKEN
-    vault: "env:unattributed"
+    vault: "gh:wave-av/wave-desktop"
 deny_paths:
   - ".dev.vars"
   - ".dev.vars.*"
