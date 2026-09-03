@@ -20,7 +20,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
       # @wave-av/ui + @wave-av/sdk resolve from GitHub Packages — auth the scope before install
       # (mirrors governance-enforce.yml). NODE_AUTH_TOKEN is the job-scoped GITHUB_TOKEN (packages:read).
