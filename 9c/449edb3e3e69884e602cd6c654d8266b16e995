@@ -1,0 +1,19 @@
+AGENTS.md
+  s_11aa6b26cb4833::t_f7d9ce09ef2200 20,22-25,27,29-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "9c449edb3e3e69884e602cd6c654d8266b16e995",
+  "prompts": {},
+  "sessions": {
+    "s_11aa6b26cb4833": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_11aa6b26cb4833",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
