@@ -1,0 +1,19 @@
+LICENSE
+  s_51709ad65acdbb::t_351ed555c9b50d 189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "d84cfd09af73efbd7ee628e9122e45fcc8b09f86",
+  "prompts": {},
+  "sessions": {
+    "s_51709ad65acdbb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a895c525a6b1820dc",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
