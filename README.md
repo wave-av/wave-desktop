@@ -106,6 +106,6 @@ Full plan: `~/claude-hub/.claude/plans/wave-on-prem-layer/plan.md`.
 
 ## License
 
-[MIT](./LICENSE) · Copyright © 2026 WAVE Online LLC.
+[MIT](./LICENSE) · Copyright © 2026 WAVE Online, LLC.
 
 [plane]: https://github.com/wave-av/wave-foundation/blob/master/frameworks/protocol-plane/README.md

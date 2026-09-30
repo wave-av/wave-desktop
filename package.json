@@ -59,7 +59,7 @@
   "build": {
     "appId": "online.wave.desktop",
     "productName": "WAVE",
-    "copyright": "Copyright © 2026 WAVE Online LLC",
+    "copyright": "Copyright © 2026 WAVE Online, LLC",
     "files": [
       "out/**/*",
       "package.json"
