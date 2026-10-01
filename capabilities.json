@@ -38,12 +38,6 @@
       "frameworks/copywriting"
     ]
   },
-  "events": {
-    "publishes": [
-      { "topic": "auth.signed-in", "transport": "sentry" },
-      { "topic": "auth.sign-in.failed", "transport": "sentry" }
-    ]
-  },
   "tags": [
     "operator",
     "public",
